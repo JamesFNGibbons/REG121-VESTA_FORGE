@@ -1,19 +1,40 @@
-"""Qwen metadata enrichment via LiteLLM (OpenAI-compatible chat completions)."""
+"""Qwen metadata enrichment via LiteLLM (OpenAI-compatible streaming chat)."""
 
 from __future__ import annotations
 
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
+from tools.litellm_client import openai_client_for_litellm
+
 logger = logging.getLogger(__name__)
 
 HTML_MAX_FOR_LLM = 4000
+
+# Strip common model "thinking" wrappers before JSON.parse
+_THINK_BLOCK_RES = [
+    re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE),
+    re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE),
+    re.compile(r"<redacted_reasoning>[\s\S]*?</redacted_reasoning>", re.IGNORECASE),
+    re.compile(r"<reasoning>[\s\S]*?</reasoning>", re.IGNORECASE),
+]
+
+
+@runtime_checkable
+class StreamingSink(Protocol):
+    """Live UI: think/reasoning vs answer tokens (JSON path)."""
+
+    def on_think(self, fragment: str) -> None: ...
+
+    def on_answer(self, fragment: str) -> None: ...
+
+    def refresh(self) -> None: ...
 
 
 class JsDependency(BaseModel):
@@ -100,13 +121,6 @@ class InspectionResult(BaseModel):
         return str(v)
 
 
-def _litellm_openai_client(base_url: str, api_key: str) -> OpenAI:
-    root = base_url.rstrip("/")
-    if not root.endswith("/v1"):
-        root = root + "/v1"
-    return OpenAI(base_url=root, api_key=api_key or "dummy")
-
-
 def _strip_json_fence(text: str) -> str:
     t = text.strip()
     m = re.match(r"^```(?:json)?\s*([\s\S]*?)\s*```$", t, re.IGNORECASE)
@@ -115,8 +129,16 @@ def _strip_json_fence(text: str) -> str:
     return t
 
 
+def strip_thinking_blocks(text: str) -> str:
+    """Remove model thinking / scratch XML so JSON can be parsed."""
+    t = text
+    for rx in _THINK_BLOCK_RES:
+        t = rx.sub("", t)
+    return t.strip()
+
+
 def _parse_inspection_json(raw: str) -> InspectionResult:
-    cleaned = _strip_json_fence(raw)
+    cleaned = _strip_json_fence(strip_thinking_blocks(raw))
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -131,7 +153,7 @@ def _parse_inspection_json(raw: str) -> InspectionResult:
 
 _SYSTEM_PROMPT = (
     "You are a meticulous UK-focused web design analyst. "
-    "Return JSON only with no markdown fences and no commentary. "
+    "Output only a single JSON object with no markdown fences and no commentary outside that object. "
     "The JSON must match the requested schema keys exactly."
 )
 
@@ -185,6 +207,53 @@ Required JSON keys and types:
     return f"Catalogue context (JSON):\n{meta}\n\nHTML (truncated):\n{html_truncated}\n{schema_hint}"
 
 
+def _delta_reasoning(delta: Any) -> str | None:
+    for attr in ("reasoning_content", "reasoning", "thinking"):
+        v = getattr(delta, attr, None)
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _stream_chat_to_text(
+    *,
+    client: OpenAI,
+    model: str,
+    catalogue: dict[str, Any],
+    html_truncated: str,
+    stream_sink: StreamingSink | None,
+) -> str:
+    stream = client.chat.completions.create(
+        model=model,
+        temperature=0.2,
+        stream=True,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": _user_prompt(catalogue=catalogue, html_truncated=html_truncated)},
+        ],
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    parts: list[str] = []
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        ch0 = chunk.choices[0]
+        delta = ch0.delta
+        if delta is None:
+            continue
+        rc = _delta_reasoning(delta)
+        if rc and stream_sink is not None:
+            stream_sink.on_think(rc)
+            stream_sink.refresh()
+        c = getattr(delta, "content", None) or ""
+        if c:
+            parts.append(c)
+            if stream_sink is not None:
+                stream_sink.on_answer(c)
+                stream_sink.refresh()
+    return "".join(parts)
+
+
 def inspect_component(
     *,
     base_url: str,
@@ -193,21 +262,20 @@ def inspect_component(
     catalogue: dict[str, Any],
     html: str,
     max_retries: int,
+    stream_sink: StreamingSink | None = None,
 ) -> InspectionResult:
     truncated = html[:HTML_MAX_FOR_LLM]
-    client = _litellm_openai_client(base_url, api_key)
+    client = openai_client_for_litellm(base_url, api_key)
 
     def _call() -> InspectionResult:
-        resp = client.chat.completions.create(
+        raw = _stream_chat_to_text(
+            client=client,
             model=model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": _user_prompt(catalogue=catalogue, html_truncated=truncated)},
-            ],
+            catalogue=catalogue,
+            html_truncated=truncated,
+            stream_sink=stream_sink,
         )
-        content = resp.choices[0].message.content or ""
-        return _parse_inspection_json(content)
+        return _parse_inspection_json(raw)
 
     retrying = Retrying(
         wait=wait_exponential(multiplier=0.5, min=0.5, max=8),

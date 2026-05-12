@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+
 @dataclass(frozen=True)
 class Settings:
     qdrant_url: str
@@ -14,7 +15,10 @@ class Settings:
     litellm_base_url: str
     litellm_api_key: str
     litellm_inspector_model: str
-    openai_api_key: str
+    deepinfra_base_url: str
+    deepinfra_api_key: str
+    deepinfra_embedding_model: str
+    dense_vector_size: int
     ingest_batch_size: int
     ingest_max_retries: int
     component_library_root: Path
@@ -28,7 +32,14 @@ def _settings_for(lib: Path) -> Settings:
         litellm_base_url=os.getenv("LITELLM_BASE_URL", "https://litellm.ai.reg121.com").strip().rstrip("/"),
         litellm_api_key=os.getenv("LITELLM_API_KEY", "").strip(),
         litellm_inspector_model=os.getenv("LITELLM_INSPECTOR_MODEL", "qwen-3.5-32b").strip(),
-        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+        deepinfra_base_url=os.getenv(
+            "DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai"
+        ).strip().rstrip("/"),
+        deepinfra_api_key=os.getenv("DEEPINFRA_API_KEY", "").strip(),
+        deepinfra_embedding_model=os.getenv(
+            "DEEPINFRA_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B"
+        ).strip(),
+        dense_vector_size=int(os.getenv("DENSE_VECTOR_SIZE", "2560")),
         ingest_batch_size=int(os.getenv("INGEST_BATCH_SIZE", "5")),
         ingest_max_retries=int(os.getenv("INGEST_MAX_RETRIES", "3")),
         component_library_root=lib,

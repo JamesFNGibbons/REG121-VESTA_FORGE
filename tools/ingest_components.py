@@ -95,8 +95,8 @@ def ingest_cmd(
     if not settings.qdrant_url or not settings.qdrant_api_key:
         raise click.UsageError("QDRANT_URL and QDRANT_API_KEY are required for ingest.")
 
-    if not use_dry and not settings.openai_api_key:
-        raise click.UsageError("OPENAI_API_KEY is required unless using --dry-run.")
+    if not use_dry and not settings.deepinfra_api_key:
+        raise click.UsageError("DEEPINFRA_API_KEY is required for embeddings unless using --dry-run.")
 
     if not use_skip and not settings.litellm_api_key:
         raise click.UsageError("LITELLM_API_KEY is required unless --skip-enrichment.")
@@ -113,6 +113,7 @@ def ingest_cmd(
         settings.qdrant_api_key,
         settings.qdrant_collection_name,
         max_retries=settings.ingest_max_retries,
+        dense_size=settings.dense_vector_size,
     )
     if not use_dry:
         qdrant.ensure_collection()
@@ -141,6 +142,7 @@ def stats_cmd() -> None:
         settings.qdrant_api_key,
         settings.qdrant_collection_name,
         max_retries=settings.ingest_max_retries,
+        dense_size=settings.dense_vector_size,
     )
     from rich.table import Table
 
@@ -172,8 +174,8 @@ def stats_cmd() -> None:
 def search_cmd(query: str, category: str | None, limit: int) -> None:
     _ensure_repo_on_path()
     settings = load_settings()
-    if not settings.openai_api_key:
-        raise click.UsageError("OPENAI_API_KEY is required for search.")
+    if not settings.deepinfra_api_key:
+        raise click.UsageError("DEEPINFRA_API_KEY is required for search.")
     if not settings.qdrant_url or not settings.qdrant_api_key:
         raise click.UsageError("QDRANT_URL and QDRANT_API_KEY are required.")
 
@@ -186,8 +188,9 @@ def search_cmd(query: str, category: str | None, limit: int) -> None:
         settings.qdrant_api_key,
         settings.qdrant_collection_name,
         max_retries=settings.ingest_max_retries,
+        dense_size=settings.dense_vector_size,
     )
-    dense, s_idx, s_val = embed_hybrid(openai_api_key=settings.openai_api_key, text=query)
+    dense, s_idx, s_val = embed_hybrid(settings=settings, text=query)
     cat = normalize_category(category) if category else None
     hits = qdrant.hybrid_search(
         dense_query=dense,

@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "sparse"
-DENSE_SIZE = 1536
+# Default dense width for Qwen3-Embedding-4B (full MRL output); override with DENSE_VECTOR_SIZE / QdrantWrapper(dense_size=...).
+DENSE_SIZE = 2560
 
 POINT_NAMESPACE = uuid.UUID("018f3f24-7b3e-7f3a-8b0c-001122334455")
 
@@ -46,10 +47,12 @@ class QdrantWrapper:
         collection_name: str,
         *,
         max_retries: int = 3,
+        dense_size: int | None = None,
     ) -> None:
         self._client = QdrantClient(url=url, api_key=api_key or None)
         self.collection_name = collection_name
         self._max_retries = max(1, max_retries)
+        self.dense_size = int(dense_size) if dense_size is not None else DENSE_SIZE
 
     @property
     def client(self) -> QdrantClient:
@@ -61,7 +64,7 @@ class QdrantWrapper:
         self._client.create_collection(
             collection_name=self.collection_name,
             vectors_config={
-                DENSE_VECTOR_NAME: models.VectorParams(size=DENSE_SIZE, distance=models.Distance.COSINE),
+                DENSE_VECTOR_NAME: models.VectorParams(size=self.dense_size, distance=models.Distance.COSINE),
             },
             sparse_vectors_config={
                 SPARSE_VECTOR_NAME: models.SparseVectorParams(on_disk=False),
@@ -115,8 +118,8 @@ class QdrantWrapper:
         payload: dict[str, Any],
     ) -> None:
         pid = point_id_for_catalogue_key(catalogue_id)
-        if len(dense) != DENSE_SIZE:
-            raise ValueError(f"Dense vector must have length {DENSE_SIZE}, got {len(dense)}")
+        if len(dense) != self.dense_size:
+            raise ValueError(f"Dense vector must have length {self.dense_size}, got {len(dense)}")
         point = models.PointStruct(
             id=pid,
             vector={

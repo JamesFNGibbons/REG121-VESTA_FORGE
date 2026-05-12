@@ -1,16 +1,16 @@
-"""Dense (OpenAI) and sparse (FastEmbed SPLADE) embeddings."""
+"""Dense embeddings via DeepInfra (OpenAI-compatible) + sparse (FastEmbed SPLADE) locally."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from openai import OpenAI
+from tools.openai_compat import openai_client_at_base_url
+
+if TYPE_CHECKING:
+    from tools.settings import Settings
 
 logger = logging.getLogger(__name__)
-
-_DENSE_MODEL = "text-embedding-3-small"
-_DENSE_DIM = 1536
 
 _splade_model: Any = None
 
@@ -30,12 +30,19 @@ def warm_splade_model() -> None:
     _splade()
 
 
-def embed_dense(*, openai_api_key: str, text: str) -> list[float]:
-    client = OpenAI(api_key=openai_api_key)
-    resp = client.embeddings.create(model=_DENSE_MODEL, input=text)
+def embed_dense(
+    *,
+    base_url: str,
+    api_key: str,
+    embedding_model: str,
+    expected_dim: int,
+    text: str,
+) -> list[float]:
+    client = openai_client_at_base_url(base_url, api_key)
+    resp = client.embeddings.create(model=embedding_model, input=text)
     vec = resp.data[0].embedding
-    if len(vec) != _DENSE_DIM:
-        raise ValueError(f"Expected {_DENSE_DIM} dims, got {len(vec)}")
+    if len(vec) != expected_dim:
+        raise ValueError(f"Expected {expected_dim} dims (set DENSE_VECTOR_SIZE to match), got {len(vec)}")
     return list(vec)
 
 
@@ -56,8 +63,14 @@ def embed_sparse(text: str) -> tuple[list[int], list[float]]:
     return indices, values
 
 
-def embed_hybrid(*, openai_api_key: str, text: str) -> tuple[list[float], list[int], list[float]]:
-    dense = embed_dense(openai_api_key=openai_api_key, text=text)
+def embed_hybrid(*, settings: "Settings", text: str) -> tuple[list[float], list[int], list[float]]:
+    dense = embed_dense(
+        base_url=settings.deepinfra_base_url,
+        api_key=settings.deepinfra_api_key,
+        embedding_model=settings.deepinfra_embedding_model,
+        expected_dim=settings.dense_vector_size,
+        text=text,
+    )
     sparse_i, sparse_v = embed_sparse(text)
     return dense, sparse_i, sparse_v
 

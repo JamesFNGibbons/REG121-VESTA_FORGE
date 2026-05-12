@@ -12,6 +12,11 @@ _load_host_lib() {
   if [[ -f "$ROOT/.reg121/component_library_root" ]]; then
     HOST_COMPONENT_LIBRARY="$(tr -d '\r\n' <"$ROOT/.reg121/component_library_root")"
     export HOST_COMPONENT_LIBRARY
+    return 0
+  fi
+  if [[ -f "$ROOT/import_bin/catalogue.py" ]]; then
+    HOST_COMPONENT_LIBRARY="$ROOT/import_bin"
+    export HOST_COMPONENT_LIBRARY
   fi
 }
 
@@ -33,7 +38,7 @@ REG121 — Docker control (./121)
 
   ./121 shell              One-off bash in the app container (docker compose run)
 
-Copy .env.example to .env. The component library (catalogue.py + HTML) lives outside this repo.
+Copy .env.example to .env. By default the component library is import_bin/ in this repo (same layout as examples/component-library-starter); override with HOST_COMPONENT_LIBRARY or ./121 library configure.
 EOF
 }
 
@@ -57,12 +62,13 @@ case "${1:-help}" in
     shift || true
     case "${1:-}" in
       configure)
+        _load_host_lib
         (cd "$ROOT" && docker compose run --rm -it tool)
         ;;
       status)
         _load_host_lib
         if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
-          echo "No library configured. Run: ./121 library configure" >&2
+          echo "No library path resolved. Populate import_bin/ or run: ./121 library configure" >&2
           exit 1
         fi
         _run_app python -m tools.ingest_components library status
@@ -78,7 +84,7 @@ case "${1:-help}" in
     shift || true
     _load_host_lib
     if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
-      echo "Missing component library path. Run: ./121 library configure" >&2
+      echo "Missing component library path. Populate import_bin/ (see examples/component-library-starter) or run: ./121 library configure" >&2
       exit 1
     fi
     _run_app python -m tools.ingest_components "$cmd" "$@"
@@ -87,7 +93,7 @@ case "${1:-help}" in
     shift || true
     _load_host_lib
     if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
-      echo "Missing component library path. Run: ./121 library configure" >&2
+      echo "Missing component library path. Populate import_bin/ (see examples/component-library-starter) or run: ./121 library configure" >&2
       exit 1
     fi
     _run_app python -m tools.ingest_components search "$@"
@@ -95,7 +101,7 @@ case "${1:-help}" in
   shell)
     _load_host_lib
     if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
-      echo "Missing component library path. Run: ./121 library configure" >&2
+      echo "Missing component library path. Populate import_bin/ (see examples/component-library-starter) or run: ./121 library configure" >&2
       exit 1
     fi
     _run_app bash
@@ -104,7 +110,7 @@ case "${1:-help}" in
     shift || true
     _load_host_lib
     if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
-      echo "Missing component library path. Run: ./121 library configure" >&2
+      echo "Missing component library path. Populate import_bin/ (see examples/component-library-starter) or run: ./121 library configure" >&2
       exit 1
     fi
     _run_app "$@"

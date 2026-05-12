@@ -32,24 +32,25 @@ def _style() -> questionary.Style:
 
 def configure_library_interactive() -> Path:
     """Prompt for absolute path, validate catalogue.py, persist to .reg121/component_library_root."""
+    root = repo_root()
+    default_import = str((root / "import_bin").resolve())
     console.print(
         Panel.fit(
             "[bold]Component library[/bold]\n\n"
-            "Choose a directory [i]outside[/i] this repository that contains [cyan]catalogue.py[/cyan] "
-            "and your HTML files.\n"
-            "Copy [dim]examples/component-library-starter/[/dim] to a location on disk to get started.",
+            "Default in this repo: [cyan]import_bin/[/cyan] (mounted at [cyan]/library[/cyan] in Docker).\n"
+            "You may point to any other directory that contains [cyan]catalogue.py[/cyan] and your HTML files.\n"
+            "See [dim]examples/component-library-starter/[/dim] for a template.",
             title="121 · library configure",
             border_style="cyan",
         )
     )
 
     style = _style()
-    default_hint = str(Path.home() / "reg121-component-library")
 
     while True:
         raw = questionary.text(
             "Absolute path to your component library directory:",
-            default=default_hint,
+            default=default_import,
             style=style,
         ).ask()
         if raw is None:

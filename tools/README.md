@@ -23,11 +23,10 @@ python -m tools.ingest_components search --query "law firm hero" --category hero
 python -m tools.ingest_components validate
 ```
 
-## Component library (outside this repo)
+## Component library
 
-- Copy [`examples/component-library-starter/`](../examples/component-library-starter/) to any directory on your machine.
-- Run `./121 library configure` and confirm the path (or set `HOST_COMPONENT_LIBRARY` / write `.reg121/component_library_root`).
-- In Docker, the library is mounted read-only at `/library`; `COMPONENT_LIBRARY_ROOT` is set to `/library`.
+- **Default:** [`import_bin/`](../import_bin/) in this repository (mounted read-only at `/library` in Docker). It is populated from `examples/component-library-starter/` so ingest works without extra setup.
+- **Override:** set `HOST_COMPONENT_LIBRARY` to an absolute path, or run `./121 library configure` (writes `.reg121/component_library_root`; `./121` exports it for Compose).
 
 ## Environment variables
 
@@ -37,8 +36,9 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 |----------|---------|
 | `QDRANT_URL`, `QDRANT_API_KEY` | Qdrant Cloud |
 | `QDRANT_COLLECTION_NAME` | Default `reg121_design_brain` |
-| `LITELLM_*`, `OPENAI_API_KEY` | As before |
-| `HOST_COMPONENT_LIBRARY` | Host path bind-mounted to `/library` (Compose); optional if `.reg121/component_library_root` exists and `./121` exports it |
+| `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL` | LiteLLM for enrichment (Qwen) only |
+| `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `DEEPINFRA_EMBEDDING_MODEL`, `DENSE_VECTOR_SIZE` | [DeepInfra](https://deepinfra.com/docs/openai_api) OpenAI-compatible API for dense vectors; `DENSE_VECTOR_SIZE` must match the model (default **2560** for `Qwen/Qwen3-Embedding-4B`) |
+| `HOST_COMPONENT_LIBRARY` | Optional. Host path bind-mounted to `/library` (defaults to `./import_bin` in Compose) |
 
 HTML sent to the inspector is truncated to **4000 characters**.
 
@@ -48,7 +48,9 @@ Skips LiteLLM / Qwen. Dense + sparse embeddings still run using catalogue-only `
 
 ## Qdrant collection
 
-Named vectors `dense` (1536, cosine) and `sparse` (SPLADE, `on_disk=false`). Payload indexes as implemented in `qdrant_wrapper.py`.
+Named vectors `dense` (default **2560** dims for `Qwen/Qwen3-Embedding-4B` on DeepInfra, cosine; set `DENSE_VECTOR_SIZE` to match the model you use) and `sparse` (SPLADE, `on_disk=false`). Payload indexes as implemented in `qdrant_wrapper.py`.
+
+**Existing collections** created with 1536-dim OpenAI embeddings must use a new `QDRANT_COLLECTION_NAME` (or recreate the collection) when switching to Qwen3 dense vectors.
 
 ## HyperUI and licensing
 

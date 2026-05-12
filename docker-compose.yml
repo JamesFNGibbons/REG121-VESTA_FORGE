@@ -1,7 +1,7 @@
 # REG121 vector ingest — full environment runs in Docker.
-# Host path to your external component library (contains catalogue.py):
-#   export HOST_COMPONENT_LIBRARY=/absolute/path/to/your/library
-# or run: ./121 library configure (writes .reg121/component_library_root)
+# Default library mount: ./import_bin (copy of examples/component-library-starter).
+# Override with: export HOST_COMPONENT_LIBRARY=/absolute/path/to/your/library
+# or: ./121 library configure (writes .reg121/component_library_root; ./121 picks it up)
 
 services:
   app:
@@ -14,7 +14,7 @@ services:
       REG121_REPO_ROOT: /app
       PYTHONPATH: /app
     volumes:
-      - ${HOST_COMPONENT_LIBRARY:?Set HOST_COMPONENT_LIBRARY or run ./121 library configure}:/library:ro
+      - ${HOST_COMPONENT_LIBRARY:-./import_bin}:/library:ro
       - ./.reg121:/app/.reg121
     stdin_open: true
     tty: true

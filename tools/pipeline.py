@@ -196,7 +196,7 @@ def run_ingest(
                                 enrichment=inspection.model_dump(),
                             )
 
-                        _set_step("embeddings (OpenAI + SPLADE)…")
+                        _set_step("embeddings (DeepInfra + SPLADE)…")
                         step("generating embeddings…")
                         if dry_run:
                             _set_step("dry-run (no store)…")
@@ -208,9 +208,7 @@ def run_ingest(
                                 + Text("dry-run OK", style="green")
                             )
                         else:
-                            dense, s_idx, s_val = embed_hybrid(
-                                openai_api_key=settings.openai_api_key, text=embedding_text
-                            )
+                            dense, s_idx, s_val = embed_hybrid(settings=settings, text=embedding_text)
 
                             _set_step("storing in Qdrant…")
                             step("storing in Qdrant…")

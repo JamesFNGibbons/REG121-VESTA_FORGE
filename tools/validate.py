@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from rich.panel import Panel
 
 from tools.catalogue_loader import load_catalogue
-from tools.qdrant_wrapper import DENSE_SIZE, DENSE_VECTOR_NAME, SPARSE_VECTOR_NAME, QdrantWrapper
+from tools.qdrant_wrapper import DENSE_VECTOR_NAME, SPARSE_VECTOR_NAME, QdrantWrapper
 from tools.settings import try_load_settings
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ def run_validate(*, console: "Console") -> None:
             Panel(
                 "Run [cyan]./121 library configure[/cyan] (host) or [cyan]library configure[/cyan] inside the "
                 "container, or set [bold]COMPONENT_LIBRARY_ROOT[/bold].\n"
-                "The component library must live [i]outside[/i] this repository.",
+                "By default the repo uses [bold]import_bin/[/bold] (see examples/component-library-starter/).",
                 title="Component library not configured",
                 border_style="yellow",
             )
@@ -47,10 +47,14 @@ def run_validate(*, console: "Console") -> None:
             issues.append("QDRANT_URL is not set")
         if not settings.qdrant_api_key:
             issues.append("QDRANT_API_KEY is not set")
-        if not settings.openai_api_key:
-            issues.append("OPENAI_API_KEY is not set (required for embeddings and search)")
+        if not settings.deepinfra_api_key:
+            issues.append("DEEPINFRA_API_KEY is not set (required for embeddings and search)")
         if not settings.litellm_api_key:
-            issues.append("LITELLM_API_KEY is not set (required for enrichment unless you always use --skip-enrichment)")
+            issues.append(
+                "LITELLM_API_KEY is not set (required for enrichment unless you always use --skip-enrichment)"
+            )
+        if settings.dense_vector_size < 1:
+            issues.append("DENSE_VECTOR_SIZE must be >= 1")
 
         if settings.ingest_batch_size < 1:
             issues.append("INGEST_BATCH_SIZE must be >= 1")
@@ -68,10 +72,11 @@ def run_validate(*, console: "Console") -> None:
     q_key = os.getenv("QDRANT_API_KEY", "").strip() if settings is None else settings.qdrant_api_key
     q_coll = os.getenv("QDRANT_COLLECTION_NAME", "reg121_design_brain").strip() if settings is None else settings.qdrant_collection_name
     max_retries = int(os.getenv("INGEST_MAX_RETRIES", "3")) if settings is None else settings.ingest_max_retries
+    dense_sz = int(os.getenv("DENSE_VECTOR_SIZE", "2560")) if settings is None else settings.dense_vector_size
 
     if q_url and q_key:
         try:
-            q = QdrantWrapper(q_url, q_key, q_coll, max_retries=max_retries)
+            q = QdrantWrapper(q_url, q_key, q_coll, max_retries=max_retries, dense_size=dense_sz)
             if not q.client.collection_exists(q_coll):
                 console.print(
                     f"[yellow]Qdrant: collection '{q_coll}' does not exist yet "
@@ -90,12 +95,14 @@ def run_validate(*, console: "Console") -> None:
                     console.print("[red]Qdrant: missing dense vector config.[/red]")
                 else:
                     size = getattr(dense_cfg, "size", None)
-                    if size != DENSE_SIZE:
+                    if size != dense_sz:
                         console.print(
-                            f"[red]Qdrant: dense vector size is {size}, expected {DENSE_SIZE}.[/red]"
+                            f"[red]Qdrant: dense vector size is {size}, expected {dense_sz} (DENSE_VECTOR_SIZE).[/red]"
                         )
                     else:
-                        console.print(f"[green]Qdrant: dense vector '{DENSE_VECTOR_NAME}' size OK ({DENSE_SIZE}).[/green]")
+                        console.print(
+                            f"[green]Qdrant: dense vector '{DENSE_VECTOR_NAME}' size OK ({dense_sz}).[/green]"
+                        )
                 sparse = getattr(params, "sparse_vectors", None)
                 if not sparse or SPARSE_VECTOR_NAME not in (sparse or {}):
                     console.print(
@@ -141,16 +148,22 @@ def run_validate(*, console: "Console") -> None:
             console.print(f"[yellow]LiteLLM probe failed (non-fatal): {exc}[/yellow]")
             logger.info("LiteLLM probe failed", exc_info=True)
 
-    oa_key = os.getenv("OPENAI_API_KEY", "").strip() if settings is None else settings.openai_api_key
-    if oa_key:
+    if settings is not None and settings.deepinfra_api_key:
         try:
-            from openai import OpenAI
+            from tools.embeddings import embed_dense
 
-            oa = OpenAI(api_key=oa_key)
-            oa.models.list()
-            console.print("[green]OpenAI: API key accepted (models list).[/green]")
+            _ = embed_dense(
+                base_url=settings.deepinfra_base_url,
+                api_key=settings.deepinfra_api_key,
+                embedding_model=settings.deepinfra_embedding_model,
+                expected_dim=settings.dense_vector_size,
+                text="validate",
+            )
+            console.print(
+                f"[green]DeepInfra: embedding probe OK ({settings.deepinfra_embedding_model}, dim={settings.dense_vector_size}).[/green]"
+            )
         except Exception as exc:
-            console.print(f"[red]OpenAI check failed: {exc}[/red]")
-            logger.exception("OpenAI validate")
+            console.print(f"[yellow]DeepInfra embedding probe failed (non-fatal): {exc}[/yellow]")
+            logger.info("DeepInfra embedding probe failed", exc_info=True)
 
     console.print("[bold]Validate finished.[/bold]")

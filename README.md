@@ -1,14 +1,10 @@
 # REG121 AI — Component vectoriser
 
-Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings (OpenAI dense + SPLADE sparse) and optional **Qwen** enrichment via **LiteLLM**.
+Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings (**DeepInfra** dense + SPLADE sparse) and optional **Qwen** enrichment via **LiteLLM**.
 
 ## Docker-first workflow
 
-1. Copy the starter library **out of this repository** (it is not tracked as your live library):
-
-   ```bash
-   cp -R examples/component-library-starter ~/reg121-component-library
-   ```
+1. **Component library** — by default use **`import_bin/`** in this repo (pre-populated from `examples/component-library-starter/`). Edit or replace files there, or set `HOST_COMPONENT_LIBRARY` / run `./121 library configure` to use another path.
 
 2. Configure keys and start the stack:
 
@@ -17,11 +13,12 @@ Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings
    # edit .env
 
    chmod +x ./121
-   ./121 library configure   # interactive Questionary wizard; saves .reg121/component_library_root
    ./121 up                    # build Docker images
    ./121 validate
-   ./121 ingest --interactive
+   ./121 ingest --interactive   # optional; ./121 ingest --all works without the wizard
    ```
+
+   Optional: `./121 library configure` — writes `.reg121/component_library_root` if you want a path other than `import_bin/`.
 
 3. Day-to-day:
 
@@ -43,7 +40,8 @@ Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings
 | [`docker-compose.yml`](docker-compose.yml) | `app` (runtime) + `tool` (library configure wizard, no library mount) |
 | [`Dockerfile`](Dockerfile) | Python 3.12 + tools + SPLADE warmup |
 | [`tools/`](tools/) | CLI (`ingest_components`), pipeline, Qdrant, embeddings, inspector |
-| [`examples/component-library-starter/`](examples/component-library-starter/) | **Template only** — copy elsewhere and point `./121 library configure` at it |
+| [`import_bin/`](import_bin/) | **Default library** — `catalogue.py` + HTML (same starter content as `examples/component-library-starter/`); override mount with `HOST_COMPONENT_LIBRARY` |
+| [`examples/component-library-starter/`](examples/component-library-starter/) | **Template** — reference copy; `import_bin` is seeded from here |
 
 ## Documentation
 

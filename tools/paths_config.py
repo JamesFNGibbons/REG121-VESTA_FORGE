@@ -17,6 +17,11 @@ def component_library_config_file() -> Path:
     return repo_root() / ".reg121" / "component_library_root"
 
 
+def import_bin_root() -> Path:
+    """Default in-repo directory for catalogue.py + HTML (mounted at /library in Docker)."""
+    return repo_root() / "import_bin"
+
+
 def resolve_component_library_root() -> Path:
     """Resolve directory containing catalogue.py and HTML (host path, mounted at /library in Docker)."""
     raw = os.getenv("COMPONENT_LIBRARY_ROOT", "").strip()
@@ -25,11 +30,14 @@ def resolve_component_library_root() -> Path:
         if cfg.is_file():
             raw = cfg.read_text(encoding="utf-8").strip()
     if not raw:
+        imp = import_bin_root()
+        if (imp / "catalogue.py").is_file():
+            return imp.resolve()
         raise RuntimeError(
             "Component library is not configured.\n"
-            "  • Set COMPONENT_LIBRARY_ROOT to the directory that contains catalogue.py, or\n"
+            "  • Populate import_bin/ with catalogue.py and HTML (see examples/component-library-starter/), or\n"
+            "  • Set COMPONENT_LIBRARY_ROOT, or\n"
             "  • Run: ./121 library configure\n"
-            "The library should live outside this repository; see examples/component-library-starter/."
         )
     return Path(raw).expanduser().resolve()
 
