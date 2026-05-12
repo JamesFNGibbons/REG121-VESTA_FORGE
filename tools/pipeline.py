@@ -9,7 +9,15 @@ from typing import Any
 
 import click
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 from rich.table import Table
 from rich.text import Text
 
@@ -21,6 +29,12 @@ from tools.settings import Settings
 logger = logging.getLogger(__name__)
 
 console = Console(stderr=True)
+
+
+def _short_id(catalogue_id: str, *, max_len: int = 42) -> str:
+    if len(catalogue_id) <= max_len:
+        return catalogue_id
+    return catalogue_id[: max_len - 1] + "…"
 
 _CATEGORY_ALIASES: dict[str, str] = {
     "heroes": "hero",
@@ -113,36 +127,46 @@ def run_ingest(
     t0 = time.perf_counter()
 
     progress_columns = (
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
+        SpinnerColumn(style="cyan"),
+        TextColumn("[bold]{task.fields[cid]}[/bold] [dim]{task.fields[step]}[/dim]", justify="left"),
+        BarColumn(complete_style="green", finished_style="green"),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        MofNCompleteColumn(),
         TimeElapsedColumn(),
+        TimeRemainingColumn(compact=True),
     )
 
     batch = max(1, settings.ingest_batch_size)
     batches = [ids[i : i + batch] for i in range(0, len(ids), batch)]
 
-    with Progress(*progress_columns, console=console, transient=False) as progress:
-        task = progress.add_task("Components", total=len(ids))
+    with Progress(*progress_columns, console=console, transient=False, expand=True) as progress:
+        task = progress.add_task("", total=len(ids), cid="", step="starting…")
         for bi, batch_ids in enumerate(batches):
             if len(batches) > 1:
                 progress.console.rule(f"[dim]Batch {bi + 1}/{len(batches)} ({len(batch_ids)} components)[/dim]")
             for catalogue_id in batch_ids:
                 row = catalogue[catalogue_id]
+                sid = _short_id(catalogue_id)
+
+                def _set_step(label: str) -> None:
+                    progress.update(task, fields={"cid": sid, "step": label})
 
                 def step(msg: str, *, cid: str = catalogue_id) -> None:
                     progress.console.log(Text(cid, style="bold") + Text(f" → {msg}", style="dim"))
 
                 try:
+                    _set_step("checking…")
                     step("checking…")
                     if not force and qdrant.point_exists(catalogue_id):
                         counts["skipped"] += 1
+                        _set_step("skipped (already in Qdrant)")
                         progress.console.print(
                             Text(catalogue_id, style="bold")
                             + Text(" ✓ ", style="yellow")
                             + Text("skipped (already in Qdrant)", style="yellow")
                         )
                     else:
+                        _set_step("loading HTML…")
                         step("loading HTML…")
                         rel = Path(row["file"])
                         path = lib_root / rel
@@ -152,10 +176,12 @@ def run_ingest(
                         html = path.read_text(encoding="utf-8")
 
                         if skip_enrichment:
+                            _set_step("enrich (skipped)…")
                             step("enriching with Qwen… (skipped)")
                             inspection = InspectionResult()
                             embedding_text = build_embedding_text(catalogue=row, enrichment=None)
                         else:
+                            _set_step("enriching (Qwen, may be slow)…")
                             step("enriching with Qwen…")
                             inspection = inspect_component(
                                 base_url=settings.litellm_base_url,
@@ -170,8 +196,10 @@ def run_ingest(
                                 enrichment=inspection.model_dump(),
                             )
 
+                        _set_step("embeddings (OpenAI + SPLADE)…")
                         step("generating embeddings…")
                         if dry_run:
+                            _set_step("dry-run (no store)…")
                             step("storing in Qdrant… (dry-run)")
                             counts["ingested"] += 1
                             progress.console.print(
@@ -184,6 +212,7 @@ def run_ingest(
                                 openai_api_key=settings.openai_api_key, text=embedding_text
                             )
 
+                            _set_step("storing in Qdrant…")
                             step("storing in Qdrant…")
                             payload = _assemble_payload(
                                 catalogue_id=catalogue_id,
