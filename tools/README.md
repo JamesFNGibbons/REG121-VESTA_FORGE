@@ -27,6 +27,23 @@ python -m tools.ingest_components search --query "law firm hero" --category hero
 python -m tools.ingest_components validate
 ```
 
+### Regenerate HyperUI `catalogue.py` from disk
+
+After copying or updating HTML under `import_bin/hyperui/`, rebuild `catalogue.py` so every `*.html` has a row (directory-derived `category`, minimal metadata; names come from Qwen on ingest):
+
+```bash
+python -m tools.generate_hyperui_catalogue
+python -m tools.generate_hyperui_catalogue --library-root /absolute/path/to/hyperui
+python -m tools.generate_hyperui_catalogue --dry-run   # count only, no write
+```
+
+Or from the repo root (Docker uses a **writable** bind at `/work` inside the container so `catalogue.py` can be written; the usual `/library` mount stays read-only):
+
+```bash
+./121 handler generate hyperui
+./121 handler generate hyperui --dry-run
+```
+
 ## Component library
 
 - **Default:** [`import_bin/`](../import_bin/) in this repository (mounted read-only at `/library` in Docker). It is populated from `examples/component-library-starter/` so ingest works without extra setup.
@@ -40,7 +57,7 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 |----------|---------|
 | `QDRANT_URL`, `QDRANT_API_KEY` | Qdrant Cloud |
 | `QDRANT_COLLECTION_NAME` | Default `reg121_design_brain` |
-| `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL` | LiteLLM for enrichment (Qwen) only |
+| `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL` | LiteLLM for enrichment (Qwen) only. **`LITELLM_INSPECTOR_MODEL` must be an exact `id` from `GET …/v1/models`** for your key; `./121 validate` warns if it is missing from that list. |
 | `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `DEEPINFRA_EMBEDDING_MODEL`, `DENSE_VECTOR_SIZE` | [DeepInfra](https://deepinfra.com/docs/openai_api) OpenAI-compatible API for dense vectors; `DENSE_VECTOR_SIZE` must match the model (default **2560** for `Qwen/Qwen3-Embedding-4B`) |
 | `FORGE_DEFAULT_HANDLER` | Preprocessor when `--handler` and per-entry `handler` are unset. **Default is `hyperui`.** Set to `generic` for unknown libraries. |
 | `HOST_COMPONENT_LIBRARY` | Optional. Host path bind-mounted to `/library` (defaults to `./import_bin` in Compose) |

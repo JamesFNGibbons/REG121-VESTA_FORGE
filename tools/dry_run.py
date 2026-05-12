@@ -119,7 +119,7 @@ def run_forge_dry_run(
             base_url=settings.litellm_base_url,
             api_key=settings.litellm_api_key,
             model=settings.litellm_inspector_model,
-            catalogue=first_row,
+            catalogue={**first_row, "catalogue_id": first_cid},
             html=proc0,
             max_retries=settings.ingest_max_retries,
         )

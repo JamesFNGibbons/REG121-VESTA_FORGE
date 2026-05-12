@@ -24,6 +24,7 @@ Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings
 
    ```bash
    ./121 ingest --all
+   ./121 handler generate hyperui   # rebuild import_bin/hyperui/catalogue.py from *.html
    ./121 stats
    ./121 search --query "law firm hero" --category hero
    ./121 shell
@@ -36,7 +37,7 @@ Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings
 
 | Path | Role |
 |------|------|
-| [`./121`](121) | Control script (build, up, ingest, library wizard, shell) |
+| [`./121`](121) | Control script (build, up, ingest, library wizard, handler catalogue generate, shell) |
 | [`docker-compose.yml`](docker-compose.yml) | `app` (runtime) + `tool` (library configure wizard, no library mount) |
 | [`Dockerfile`](Dockerfile) | Python 3.12 + tools + SPLADE warmup |
 | [`tools/`](tools/) | CLI (`ingest_components`), pipeline, Qdrant, embeddings, inspector |

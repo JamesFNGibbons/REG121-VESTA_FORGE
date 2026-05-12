@@ -32,7 +32,7 @@ def _settings_for(lib: Path) -> Settings:
         qdrant_collection_name=os.getenv("QDRANT_COLLECTION_NAME", "reg121_design_brain").strip(),
         litellm_base_url=os.getenv("LITELLM_BASE_URL", "https://litellm.ai.reg121.com").strip().rstrip("/"),
         litellm_api_key=os.getenv("LITELLM_API_KEY", "").strip(),
-        litellm_inspector_model=os.getenv("LITELLM_INSPECTOR_MODEL", "qwen-3.5-32b").strip(),
+        litellm_inspector_model=os.getenv("LITELLM_INSPECTOR_MODEL", "qwen3-32b").strip(),
         deepinfra_base_url=os.getenv(
             "DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai"
         ).strip().rstrip("/"),

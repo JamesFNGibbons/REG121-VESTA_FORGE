@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Any, Protocol, runtime_checkable
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
@@ -67,6 +67,11 @@ class EmotionalResponse(BaseModel):
 
 
 class InspectionResult(BaseModel):
+    """Single-pass LiteLLM output: infer all fields from HTML; catalogue may be minimal."""
+
+    llm_display_name: str = ""
+    search_tags: list[str] = Field(default_factory=list)
+    llm_mood: str = ""
     vibe: list[str] = Field(default_factory=list)
     anti_vibe: list[str] = Field(default_factory=list)
     design_era: str = "timeless"
@@ -97,6 +102,8 @@ class InspectionResult(BaseModel):
     best_for: str = ""
 
     @field_validator(
+        "llm_display_name",
+        "llm_mood",
         "design_era",
         "aesthetic_movement",
         "conversion_role",
@@ -161,6 +168,7 @@ _SYSTEM_PROMPT = (
 def _user_prompt(*, catalogue: dict[str, Any], html_truncated: str) -> str:
     meta = json.dumps(
         {
+            "catalogue_id": catalogue.get("catalogue_id"),
             "component_name": catalogue.get("name"),
             "category": catalogue.get("category"),
             "description": catalogue.get("description"),
@@ -170,8 +178,18 @@ def _user_prompt(*, catalogue: dict[str, Any], html_truncated: str) -> str:
         },
         ensure_ascii=False,
     )
+    instructions = (
+        "The catalogue entry may be minimal (e.g. only directory-derived category and file path). "
+        "Infer llm_display_name, search_tags, llm_mood, and every other schema field primarily from the HTML. "
+        "Treat optional catalogue fields (component_name, description, mood, business_types, visual_tags) as hints "
+        "only when non-empty; otherwise ignore them. "
+        "Use catalogue_id to disambiguate variants (e.g. footers/7-dark vs footers/7).\n\n"
+    )
     schema_hint = """
 Required JSON keys and types:
+- llm_display_name: string (short human title, e.g. Neobrutalist accordion FAQ dark)
+- search_tags: string array (5-12 retrieval tokens, lowercase kebab or single words)
+- llm_mood: string (one token or short phrase for filtering, e.g. professional, playful, bold)
 - vibe: string array (aesthetic descriptors)
 - anti_vibe: string array
 - design_era: one of timeless, modern-2024, brutalist, classic
@@ -204,7 +222,10 @@ Required JSON keys and types:
 - complexity: integer 1-10
 - best_for: string (one precise sentence for UK SMB context)
 """
-    return f"Catalogue context (JSON):\n{meta}\n\nHTML (truncated):\n{html_truncated}\n{schema_hint}"
+    return (
+        f"{instructions}"
+        f"Catalogue context (JSON):\n{meta}\n\nHTML (truncated):\n{html_truncated}\n{schema_hint}"
+    )
 
 
 def _delta_reasoning(delta: Any) -> str | None:
@@ -223,16 +244,25 @@ def _stream_chat_to_text(
     html_truncated: str,
     stream_sink: StreamingSink | None,
 ) -> str:
-    stream = client.chat.completions.create(
-        model=model,
-        temperature=0.2,
-        stream=True,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _user_prompt(catalogue=catalogue, html_truncated=html_truncated)},
-        ],
-        extra_body={"thinking": {"type": "disabled"}},
-    )
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            stream=True,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": _user_prompt(catalogue=catalogue, html_truncated=html_truncated)},
+            ],
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+    except BadRequestError as exc:
+        err_txt = str(exc).lower()
+        if "invalid model" in err_txt or "model name" in err_txt:
+            raise RuntimeError(
+                f"LiteLLM rejected chat model {model!r}. Set LITELLM_INSPECTOR_MODEL in .env to an exact "
+                f"'id' from GET <LITELLM_BASE_URL>/v1/models for your API key (run ./121 validate to check)."
+            ) from exc
+        raise
     parts: list[str] = []
     for chunk in stream:
         if not chunk.choices:
@@ -291,17 +321,28 @@ def inspect_component(
 
 
 def index_fields_from_inspection(result: InspectionResult) -> dict[str, Any]:
-    """Top-level payload fields used for Qdrant payload indexes and filtering."""
+    """Top-level payload fields aligned with Qdrant payload indexes (keyword / float / integer)."""
     er = result.emotional_response
+    mood = (result.llm_mood or "").strip() or "neutral"
     return {
+        "mood": mood,
         "emotional_trust": float(er.trust),
         "emotional_authority": float(er.authority),
         "emotional_warmth": float(er.warmth),
+        "emotional_excitement": float(er.excitement),
+        "emotional_safety": float(er.safety),
+        "emotional_aspiration": float(er.aspiration),
+        "emotional_urgency": float(er.urgency),
         "js_type": result.javascript.js_type,
         "js_complexity": result.javascript.js_complexity,
         "price_point_signal": result.price_point_signal,
         "conversion_role": result.conversion_role,
         "layout_pattern": result.layout_pattern,
+        "content_density": result.content_density,
+        "buyer_journey_stage": result.buyer_journey_stage,
+        "aesthetic_movement": result.aesthetic_movement,
+        "narrative_role": result.narrative_role,
+        "complexity": int(result.complexity),
         "js_dependencies": [dep.model_dump() for dep in result.javascript.dependencies],
     }
 

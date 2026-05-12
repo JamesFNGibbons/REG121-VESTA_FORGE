@@ -18,6 +18,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _litellm_entry_id(entry: object) -> str | None:
+    """Best-effort model id from /v1/models item (OpenAI Model or LiteLLM-shaped dict)."""
+    if isinstance(entry, dict):
+        for key in ("id", "model", "model_name"):
+            val = entry.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return None
+    for attr in ("id", "model", "model_name"):
+        val = getattr(entry, attr, None)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return None
+
+
 def run_validate(*, console: "Console") -> None:
     settings = try_load_settings()
     issues: list[str] = []
@@ -137,8 +152,48 @@ def run_validate(*, console: "Console") -> None:
                 root = root + "/v1"
             oc = OpenAI(base_url=root, api_key=litellm_key)
             models = oc.models.list()
-            _ = models.data
+            data = list(models.data or [])
             console.print("[green]LiteLLM: OpenAI-compatible /v1/models reachable.[/green]")
+            wanted = (
+                settings.litellm_inspector_model.strip()
+                if settings is not None
+                else os.getenv("LITELLM_INSPECTOR_MODEL", "qwen3-32b").strip()
+            )
+            ids = []
+            for m in data:
+                mid = _litellm_entry_id(m)
+                if mid:
+                    ids.append(mid)
+            id_set = set(ids)
+            if wanted:
+                console.print(
+                    f"[dim]LiteLLM: configured enrichment model LITELLM_INSPECTOR_MODEL={wanted!r}.[/dim]"
+                )
+            if wanted and not data:
+                console.print(
+                    "[yellow]LiteLLM: /v1/models returned no entries — cannot verify "
+                    "LITELLM_INSPECTOR_MODEL against the gateway list.[/yellow]"
+                )
+            elif wanted and data and not id_set:
+                console.print(
+                    "[yellow]LiteLLM: /v1/models returned "
+                    f"{len(data)} entr(y/ies) but no parseable model ids — cannot verify "
+                    "LITELLM_INSPECTOR_MODEL (unexpected response shape).[/yellow]"
+                )
+            elif wanted and id_set and wanted not in id_set:
+                console.print(
+                    f"[red]LITELLM_INSPECTOR_MODEL is {wanted!r} but that id is not listed "
+                    f"by /v1/models for this key — chat completions will fail until you fix it.[/red]"
+                )
+                sample = sorted(id_set)[:50]
+                console.print(f"[dim]First model ids from gateway (50 max): {', '.join(sample)}[/dim]")
+                hints = [i for i in ids if "qwen" in i.lower() or "32" in i]
+                if hints:
+                    console.print(f"[yellow]Ids containing 'qwen' or '32' (hints): {', '.join(sorted(set(hints))[:20])}[/yellow]")
+            elif wanted and id_set and wanted in id_set:
+                console.print(
+                    f"[green]LiteLLM: {wanted!r} appears in /v1/models for this key.[/green]"
+                )
         except Exception as exc:
             console.print(f"[yellow]LiteLLM probe failed (non-fatal): {exc}[/yellow]")
             logger.info("LiteLLM probe failed", exc_info=True)

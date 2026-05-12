@@ -26,7 +26,7 @@ from rich.text import Text
 
 from tools.embeddings import build_embedding_text, embed_hybrid
 from tools.handlers import resolve_handler_for_row
-from tools.inspector import InspectionResult, inspect_component, inspection_to_payload_dict
+from tools.inspector import InspectionResult, index_fields_from_inspection, inspect_component
 from tools.qdrant_wrapper import QdrantWrapper, point_id_for_catalogue_key
 from tools.settings import Settings
 
@@ -110,24 +110,18 @@ def _assemble_payload(
     embedding_text: str,
 ) -> dict[str, Any]:
     enrichment = inspection.model_dump()
-    merged_index = inspection_to_payload_dict(inspection)
+    index_top = index_fields_from_inspection(inspection)
     # TODO: remove or make configurable post-launch.
     html_raw_capped = (html_raw or "")[:_HTML_RAW_DEBUG_CAP]
+    display_name = (inspection.llm_display_name or "").strip() or str(catalogue_row.get("name") or "")
     return {
         "catalogue_id": catalogue_id,
         "point_id": point_id_for_catalogue_key(catalogue_id),
         **catalogue_row,
+        "name": display_name,
         "forge_handler": forge_handler,
         "enrichment": enrichment,
-        "emotional_trust": merged_index["emotional_trust"],
-        "emotional_authority": merged_index["emotional_authority"],
-        "emotional_warmth": merged_index["emotional_warmth"],
-        "js_type": merged_index["js_type"],
-        "js_complexity": merged_index["js_complexity"],
-        "price_point_signal": merged_index["price_point_signal"],
-        "conversion_role": merged_index["conversion_role"],
-        "layout_pattern": merged_index["layout_pattern"],
-        "js_dependencies": merged_index["js_dependencies"],
+        **index_top,
         "html": html,
         "html_raw": html_raw_capped,
         "html_preview": html[:500],
@@ -216,11 +210,12 @@ def run_ingest(
 
                         _set_step("enriching (Qwen, may be slow)…")
                         step("enriching with Qwen…")
+                        inspect_row = {**row, "catalogue_id": catalogue_id}
                         inspection = inspect_component(
                             base_url=settings.litellm_base_url,
                             api_key=settings.litellm_api_key,
                             model=settings.litellm_inspector_model,
-                            catalogue=row,
+                            catalogue=inspect_row,
                             html=processed,
                             max_retries=settings.ingest_max_retries,
                         )
