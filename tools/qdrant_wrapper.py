@@ -33,6 +33,15 @@ KEYWORD_INDEX_FIELDS: tuple[str, ...] = (
     "buyer_journey_stage",
     "aesthetic_movement",
     "narrative_role",
+    "design_era",
+    "cta_prominence",
+    "white_space",
+    "visual_hierarchy",
+    "image_type",
+    "mobile_behaviour",
+    "wcag_level",
+    "performance_impact",
+    "llm_display_name",
 )
 FLOAT_INDEX_FIELDS: tuple[str, ...] = (
     "emotional_trust",
@@ -40,6 +49,7 @@ FLOAT_INDEX_FIELDS: tuple[str, ...] = (
     "emotional_warmth",
     "emotional_excitement",
     "emotional_safety",
+    "emotional_curiosity",
     "emotional_aspiration",
     "emotional_urgency",
     "acceptance_rate",
@@ -48,6 +58,9 @@ FLOAT_INDEX_FIELDS: tuple[str, ...] = (
 INTEGER_INDEX_FIELDS: tuple[str, ...] = (
     "usage_count",
     "complexity",
+)
+BOOL_INDEX_FIELDS: tuple[str, ...] = (
+    "requires_image",
 )
 
 
@@ -132,7 +145,19 @@ class QdrantWrapper:
                 field_schema=models.PayloadSchemaType.INTEGER,
             )
 
-        n_idx = len(KEYWORD_INDEX_FIELDS) + len(FLOAT_INDEX_FIELDS) + len(INTEGER_INDEX_FIELDS)
+        for field in BOOL_INDEX_FIELDS:
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.BOOL,
+            )
+
+        n_idx = (
+            len(KEYWORD_INDEX_FIELDS)
+            + len(FLOAT_INDEX_FIELDS)
+            + len(INTEGER_INDEX_FIELDS)
+            + len(BOOL_INDEX_FIELDS)
+        )
         _console.print(
             f"[green]✓ Created collection {self.collection_name} "
             f"with {n_idx} payload indexes[/green]"
@@ -174,6 +199,16 @@ class QdrantWrapper:
                 field_schema=models.PayloadSchemaType.INTEGER,
             )
             logger.info("Created integer payload index on %s", field)
+
+        for field in BOOL_INDEX_FIELDS:
+            if field in existing:
+                continue
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.BOOL,
+            )
+            logger.info("Created bool payload index on %s", field)
 
     def point_exists(self, catalogue_id: str) -> bool:
         pid = point_id_for_catalogue_key(catalogue_id)

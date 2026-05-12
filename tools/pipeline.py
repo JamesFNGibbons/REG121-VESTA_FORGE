@@ -99,6 +99,16 @@ def pick_sample_ids_per_category(catalogue: dict[str, dict[str, Any]]) -> dict[s
 _HTML_RAW_DEBUG_CAP = 10_000
 
 
+def _is_effectively_empty(val: Any) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, str):
+        return not val.strip()
+    if isinstance(val, (list, dict, tuple, set)):
+        return len(val) == 0
+    return False
+
+
 def _assemble_payload(
     *,
     catalogue_id: str,
@@ -111,17 +121,24 @@ def _assemble_payload(
 ) -> dict[str, Any]:
     enrichment = inspection.model_dump()
     index_top = index_fields_from_inspection(inspection)
-    # TODO: remove or make configurable post-launch.
-    html_raw_capped = (html_raw or "")[:_HTML_RAW_DEBUG_CAP]
+    merged = dict(catalogue_row)
+    for key, val in index_top.items():
+        if key == "requires_image" or _is_effectively_empty(merged.get(key)):
+            merged[key] = val
     display_name = (inspection.llm_display_name or "").strip() or str(catalogue_row.get("name") or "")
+    merged["name"] = display_name
+    best_for = (inspection.best_for or "").strip()
+    if _is_effectively_empty(merged.get("description")) and best_for:
+        merged["description"] = best_for
+    deps = [dep.model_dump() for dep in inspection.javascript.dependencies]
+    merged["js_dependencies"] = deps
+    html_raw_capped = (html_raw or "")[:_HTML_RAW_DEBUG_CAP]
     return {
         "catalogue_id": catalogue_id,
         "point_id": point_id_for_catalogue_key(catalogue_id),
-        **catalogue_row,
-        "name": display_name,
+        **merged,
         "forge_handler": forge_handler,
         "enrichment": enrichment,
-        **index_top,
         "html": html,
         "html_raw": html_raw_capped,
         "html_preview": html[:500],

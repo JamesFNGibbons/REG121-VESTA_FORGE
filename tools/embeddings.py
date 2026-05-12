@@ -86,35 +86,23 @@ def build_embedding_text(
     catalogue: dict[str, Any],
     enrichment: dict[str, Any] | None,
 ) -> str:
-    """Rich paragraph for hybrid retrieval (dense + SPLADE)."""
+    """Hybrid retrieval string: prefer LLM enrichment; catalogue only as fallback when enrichment is absent."""
     e = enrichment or {}
-    er = e.get("emotional_response") or {}
-    display = (e.get("llm_display_name") or "").strip() or str(catalogue.get("name") or "")
-    blurb = (e.get("best_for") or "").strip() or str(catalogue.get("description") or "")
-    parts: list[str] = [
-        display,
-        f"category {catalogue.get('category', '')}",
-        f"variant {catalogue.get('variant_name', '')}",
-        f"search_tags {'; '.join(e.get('search_tags') or [])}",
-        f"llm_mood {e.get('llm_mood', '')}",
-        f"vibe {'; '.join(e.get('vibe') or [])}",
-        f"anti_vibe {'; '.join(e.get('anti_vibe') or [])}",
-        f"aesthetic_movement {e.get('aesthetic_movement', '')}",
-        f"design_era {e.get('design_era', '')}",
-        f"trust {er.get('trust', '')} excitement {er.get('excitement', '')} "
-        f"warmth {er.get('warmth', '')} authority {er.get('authority', '')} "
-        f"safety {er.get('safety', '')} aspiration {er.get('aspiration', '')} urgency {er.get('urgency', '')}",
-        f"first_impression {e.get('first_impression', '')}",
-        f"conversion_role {e.get('conversion_role', '')}",
-        f"buyer_journey_stage {e.get('buyer_journey_stage', '')}",
-        f"content_density {e.get('content_density', '')}",
-        f"industry_perfect {'; '.join(e.get('industry_perfect') or [])}",
-        f"industry_good {'; '.join(e.get('industry_good') or [])}",
-        f"industry_avoid {'; '.join(e.get('industry_avoid') or [])}",
-        f"price_point_signal {e.get('price_point_signal', '')}",
-        f"layout_pattern {e.get('layout_pattern', '')}",
-        f"narrative_role {e.get('narrative_role', '')}",
-        blurb,
-        UK_SMB_TAIL,
-    ]
+    display = (e.get("llm_display_name") or "").strip()
+    impression = (e.get("first_impression") or "").strip()
+    tags = e.get("search_tags") or []
+    aesthetic = (e.get("aesthetic_movement") or "").strip()
+    category = str(catalogue.get("category") or "").strip()
+
+    has_enrichment = bool(display or impression or tags or aesthetic)
+
+    if has_enrichment:
+        tag_str = " ".join(str(t).strip() for t in tags if str(t).strip())
+        parts = [display, category, aesthetic, tag_str, impression]
+        return " ".join(p for p in parts if p)
+
+    # Fallback when inspect failed or returned nothing useful
+    name = str(catalogue.get("name") or "").strip()
+    desc = str(catalogue.get("description") or "").strip()
+    parts = [name, f"category {category}", desc, UK_SMB_TAIL]
     return " ".join(p for p in parts if p and p != "None")

@@ -75,7 +75,7 @@ class InspectionResult(BaseModel):
     vibe: list[str] = Field(default_factory=list)
     anti_vibe: list[str] = Field(default_factory=list)
     design_era: str = "timeless"
-    aesthetic_movement: str = "corporate-minimal"
+    aesthetic_movement: str = ""
     emotional_response: EmotionalResponse = Field(default_factory=EmotionalResponse)
     first_impression: str = ""
     psychological_triggers: list[str] = Field(default_factory=list)
@@ -180,27 +180,43 @@ def _user_prompt(*, catalogue: dict[str, Any], html_truncated: str) -> str:
     )
     instructions = (
         "The catalogue entry may be minimal (e.g. only directory-derived category and file path). "
-        "Infer llm_display_name, search_tags, llm_mood, and every other schema field primarily from the HTML. "
+        "Infer every schema field primarily from the HTML and Tailwind class names. "
         "Treat optional catalogue fields (component_name, description, mood, business_types, visual_tags) as hints "
         "only when non-empty; otherwise ignore them. "
-        "Use catalogue_id to disambiguate variants (e.g. footers/7-dark vs footers/7).\n\n"
+        "Use catalogue_id to disambiguate variants (e.g. accordions/1-dark vs accordions/1).\n\n"
+        "CRITICAL — empty arrays are a failed response. You MUST NOT return empty arrays for:\n"
+        "- search_tags (minimum 5 items, maximum 12; concrete tokens: components, patterns, colours, layout, audience)\n"
+        "- vibe (minimum 2 aesthetic descriptors)\n"
+        "- industry_perfect (minimum 2 specific UK business types or sectors)\n"
+        "- psychological_triggers (minimum 2 marketing/psychology hooks implied by the design)\n"
+        "If you are tempted to leave any of these empty, invent specific, defensible items grounded in the HTML.\n\n"
+        "aesthetic_movement — force diversity. Do NOT default everything to corporate-minimal.\n"
+        "- If the HTML uses heavy borders (e.g. border-2, border-4), thick outlines, or stark high-contrast blocks, "
+        "set aesthetic_movement to \"neobrutalist\" (unless a more specific movement clearly fits better).\n"
+        "- If it uses subtle shadows, generous white-space, muted greys, and restrained typography, "
+        "set aesthetic_movement to \"minimalist-saas\".\n"
+        "- Otherwise pick the best-fitting movement label (e.g. warm-editorial, glassmorphism, playful-consumer, "
+        "luxury-restrained, brutalist-raw) from evidence in the markup — never a lazy generic.\n\n"
+        "llm_display_name MUST reflect light/dark mode when the HTML does: if you see dark backgrounds "
+        "(bg-gray-900, bg-slate-950, dark:, text-white on dark ground), include the word \"Dark\" in the title; "
+        "if the surface is predominantly light/white, include \"Light\". Keep the title short (under ~80 chars).\n\n"
     )
     schema_hint = """
 Required JSON keys and types:
-- llm_display_name: string (short human title, e.g. Neobrutalist accordion FAQ dark)
-- search_tags: string array (5-12 retrieval tokens, lowercase kebab or single words)
+- llm_display_name: string (short human title; include Dark or Light per Tailwind/surfaces as instructed above)
+- search_tags: string array (5-12 items, REQUIRED non-empty; lowercase kebab or single words)
 - llm_mood: string (one token or short phrase for filtering, e.g. professional, playful, bold)
-- vibe: string array (aesthetic descriptors)
-- anti_vibe: string array
+- vibe: string array (minimum 2 items, REQUIRED non-empty aesthetic descriptors)
+- anti_vibe: string array (may be empty only if truly N/A; prefer 1-3 contrasts)
 - design_era: one of timeless, modern-2024, brutalist, classic
-- aesthetic_movement: string (e.g. corporate-minimal, warm-editorial)
+- aesthetic_movement: string (diverse; follow border/shadow rules above — not a blanket corporate-minimal)
 - emotional_response: object with trust, excitement, warmth, authority, safety, curiosity, aspiration, urgency (integers 1-10)
 - first_impression: string (one sentence)
-- psychological_triggers: string array
+- psychological_triggers: string array (minimum 2 items, REQUIRED non-empty)
 - conversion_role: string (e.g. trust-builder, direct-converter)
 - cta_prominence: one of none, subtle, moderate, strong, dominant
 - buyer_journey_stage: one of awareness, consideration, decision, retention
-- industry_perfect: string array (specific UK business types)
+- industry_perfect: string array (minimum 2 UK business types, REQUIRED non-empty)
 - industry_good: string array
 - industry_avoid: string array
 - price_point_signal: one of budget, mid, premium-mid, premium, luxury
@@ -321,32 +337,45 @@ def inspect_component(
 
 
 def index_fields_from_inspection(result: InspectionResult) -> dict[str, Any]:
-    """Top-level payload fields aligned with Qdrant payload indexes (keyword / float / integer)."""
+    """Top-level payload fields aligned with Qdrant payload indexes (keyword / float / integer / bool)."""
     er = result.emotional_response
+    js = result.javascript
     mood = (result.llm_mood or "").strip() or "neutral"
+    display = (result.llm_display_name or "").strip()
     return {
+        "llm_display_name": display,
         "mood": mood,
         "emotional_trust": float(er.trust),
         "emotional_authority": float(er.authority),
         "emotional_warmth": float(er.warmth),
         "emotional_excitement": float(er.excitement),
         "emotional_safety": float(er.safety),
+        "emotional_curiosity": float(er.curiosity),
         "emotional_aspiration": float(er.aspiration),
         "emotional_urgency": float(er.urgency),
-        "js_type": result.javascript.js_type,
-        "js_complexity": result.javascript.js_complexity,
+        "js_type": js.js_type,
+        "js_complexity": js.js_complexity,
         "price_point_signal": result.price_point_signal,
         "conversion_role": result.conversion_role,
         "layout_pattern": result.layout_pattern,
         "content_density": result.content_density,
         "buyer_journey_stage": result.buyer_journey_stage,
-        "aesthetic_movement": result.aesthetic_movement,
+        "aesthetic_movement": (result.aesthetic_movement or "").strip(),
         "narrative_role": result.narrative_role,
+        "design_era": result.design_era,
+        "cta_prominence": result.cta_prominence,
+        "white_space": result.white_space,
+        "visual_hierarchy": result.visual_hierarchy,
+        "image_type": result.image_type,
+        "mobile_behaviour": result.mobile_behaviour,
+        "wcag_level": result.wcag_level,
+        "performance_impact": result.performance_impact,
         "complexity": int(result.complexity),
-        "js_dependencies": [dep.model_dump() for dep in result.javascript.dependencies],
+        "requires_image": bool(result.requires_image),
     }
 
 
 def inspection_to_payload_dict(result: InspectionResult) -> dict[str, Any]:
     """Backward-compatible name: full enrichment dict + index helpers."""
-    return {**result.model_dump(), **index_fields_from_inspection(result)}
+    deps = [dep.model_dump() for dep in result.javascript.dependencies]
+    return {**result.model_dump(), **index_fields_from_inspection(result), "js_dependencies": deps}
