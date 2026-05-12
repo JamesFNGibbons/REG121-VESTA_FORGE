@@ -16,7 +16,6 @@ python -m tools.ingest_components ingest --category hero
 python -m tools.ingest_components ingest --id heroes/split-left
 python -m tools.ingest_components ingest --all --dry-run
 python -m tools.ingest_components ingest --all --force
-python -m tools.ingest_components ingest --all --skip-enrichment
 
 python -m tools.ingest_components ingest --all --handler hyperui
 python -m tools.ingest_components handlers
@@ -56,9 +55,7 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 
 HTML sent to the inspector is truncated to **4000 characters** (after preprocessing).
 
-### `--skip-enrichment`
-
-Skips LiteLLM / Qwen. Dense + sparse embeddings still run using catalogue-only `embedding_text` plus the UK/SMB keyword tail.
+Every ingest run calls **LiteLLM / Qwen** enrichment before embeddings (no opt-out).
 
 ## Qdrant collection
 

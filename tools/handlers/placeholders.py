@@ -1,4 +1,4 @@
-"""Placeholder replacement using BeautifulSoup."""
+"""Shared Forge stage: boilerplate → [[PLACEHOLDER]] tokens (BeautifulSoup). Used after handler-specific steps."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Safe fallback handler for unknown MIT libraries."""
+"""Safe fallback handler for unknown MIT libraries — default Forge hooks + standard pipeline entry."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from tools.handlers.base import ComponentHandler
+from tools.handlers.standard_pipeline import run_standard_forge
 
 _PREVIEW_CLASSES = re.compile(
     r"^flex\s+flex-wrap\s+justify-center\s+gap-4\s+p-6$|^flex\s+flex-wrap\s+justify-center\s+gap-4\s+p-6\s"
@@ -20,6 +21,10 @@ class GenericComponentHandler(ComponentHandler):
     DESCRIPTION = "Best-effort doc strip, multi-hue palette mapping, shared placeholders."
     LICENSE_NOTE = "Depends on source; use MIT-licensed libraries only."
     DEFAULT_PALETTE_LABEL = "indigo/blue/violet/purple (400–700)"
+
+    def preprocess(self, raw_html: str) -> tuple[str, dict[str, Any]]:
+        """Canonical Forge entry: all default stripping/processing runs through the handler + shared stages."""
+        return run_standard_forge(self, raw_html)
 
     def colour_map(self) -> dict[str, str]:
         return {

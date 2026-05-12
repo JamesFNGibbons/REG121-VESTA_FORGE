@@ -68,7 +68,6 @@ _HANDLER_IDS = ("hyperui", "flowbite", "preline", "meraki", "generic")
 @click.option("--id", "single_id", type=str, default=None, help="Single catalogue id (e.g. heroes/split-left).")
 @click.option("--dry-run", is_flag=True, help="Run checks and enrichment but do not write to Qdrant.")
 @click.option("--force", is_flag=True, help="Upsert even if the point already exists.")
-@click.option("--skip-enrichment", is_flag=True, help="Skip LiteLLM/Qwen; embeddings use catalogue text only.")
 @click.option(
     "--handler",
     type=click.Choice(_HANDLER_IDS),
@@ -87,7 +86,6 @@ def ingest_cmd(
     single_id: str | None,
     dry_run: bool,
     force: bool,
-    skip_enrichment: bool,
     interactive: bool,
     handler: str | None,
 ) -> None:
@@ -99,7 +97,7 @@ def ingest_cmd(
     catalogue = load_catalogue(settings.component_library_root)
 
     use_all, use_category, use_id = all_flag, category, single_id
-    use_dry, use_skip, use_force = dry_run, skip_enrichment, force
+    use_dry, use_force = dry_run, force
 
     selection_count = sum(bool(x) for x in (use_all, use_category, use_id))
     if interactive and selection_count > 0:
@@ -112,8 +110,8 @@ def ingest_cmd(
             prompt_forge_handler_interactive(settings=settings)
             settings = load_settings()
             catalogue = load_catalogue(settings.component_library_root)
-        a, c, i, dr, se, ff = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
-        use_all, use_category, use_id, use_dry, use_skip, use_force = a, c, i, dr, se, ff
+        a, c, i, dr, ff = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
+        use_all, use_category, use_id, use_dry, use_force = a, c, i, dr, ff
     elif selection_count != 1:
         raise click.UsageError("Choose exactly one of: --all, --category, --id (or use --interactive).")
 
@@ -123,8 +121,8 @@ def ingest_cmd(
     if not use_dry and not settings.deepinfra_api_key:
         raise click.UsageError("DEEPINFRA_API_KEY is required for embeddings unless using --dry-run.")
 
-    if not use_skip and not settings.litellm_api_key:
-        raise click.UsageError("LITELLM_API_KEY is required unless --skip-enrichment.")
+    if not settings.litellm_api_key:
+        raise click.UsageError("LITELLM_API_KEY is required for Qwen enrichment on every ingest.")
 
     ids = resolve_catalogue_ids(
         catalogue=catalogue,
@@ -141,7 +139,7 @@ def ingest_cmd(
         dense_size=settings.dense_vector_size,
     )
     if not use_dry:
-        qdrant.ensure_collection()
+        qdrant.ensure_collection_exists()
         qdrant.ensure_payload_indexes()
 
     run_ingest(
@@ -151,7 +149,6 @@ def ingest_cmd(
         ids=ids,
         dry_run=use_dry,
         force=use_force,
-        skip_enrichment=use_skip,
         handler_cli=handler,
     )
 

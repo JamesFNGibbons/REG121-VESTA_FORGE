@@ -181,8 +181,8 @@ def run_interactive_ingest_wizard(
     *,
     settings: Any,
     catalogue: dict[str, dict[str, Any]],
-) -> tuple[bool, str | None, str | None, bool, bool, bool]:
-    """Returns (all_flag, category, single_id, dry_run, skip_enrichment, force). Handler is chosen before wizard."""
+) -> tuple[bool, str | None, str | None, bool, bool]:
+    """Returns (all_flag, category, single_id, dry_run, force). Handler is chosen before wizard."""
     style = _style()
     console.print(
         Panel.fit(
@@ -236,13 +236,6 @@ def run_interactive_ingest_wizard(
     dry_run = questionary.confirm("Dry run (no Qdrant writes / no embeddings)?", default=False, style=style).ask()
     if dry_run is None:
         raise click.Abort()
-    skip_enrichment = questionary.confirm(
-        "Skip Qwen enrichment (catalogue-only embedding text)?",
-        default=False,
-        style=style,
-    ).ask()
-    if skip_enrichment is None:
-        raise click.Abort()
     force = questionary.confirm("Force re-upsert even if the point already exists?", default=False, style=style).ask()
     if force is None:
         raise click.Abort()
@@ -250,4 +243,4 @@ def run_interactive_ingest_wizard(
     if not questionary.confirm("Start ingestion now?", default=True, style=style).ask():
         raise click.Abort()
 
-    return all_flag, category, single_id, dry_run, skip_enrichment, force
+    return all_flag, category, single_id, dry_run, force

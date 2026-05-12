@@ -7,9 +7,11 @@ import uuid
 from typing import Any, Sequence
 
 from qdrant_client import QdrantClient, models
+from rich.console import Console
 from tenacity import Retrying, wait_exponential, stop_after_attempt
 
 logger = logging.getLogger(__name__)
+_console = Console(stderr=True)
 
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "sparse"
@@ -20,19 +22,32 @@ POINT_NAMESPACE = uuid.UUID("018f3f24-7b3e-7f3a-8b0c-001122334455")
 
 KEYWORD_INDEX_FIELDS: tuple[str, ...] = (
     "category",
-    "forge_handler",
     "js_type",
     "js_complexity",
     "price_point_signal",
     "conversion_role",
     "layout_pattern",
+    "content_density",
+    "mood",
+    "forge_handler",
+    "buyer_journey_stage",
+    "aesthetic_movement",
+    "narrative_role",
 )
 FLOAT_INDEX_FIELDS: tuple[str, ...] = (
     "emotional_trust",
     "emotional_authority",
     "emotional_warmth",
-    "usage_count",
+    "emotional_excitement",
+    "emotional_safety",
+    "emotional_aspiration",
+    "emotional_urgency",
     "acceptance_rate",
+    "edit_frequency",
+)
+INTEGER_INDEX_FIELDS: tuple[str, ...] = (
+    "usage_count",
+    "complexity",
 )
 
 
@@ -59,19 +74,70 @@ class QdrantWrapper:
     def client(self) -> QdrantClient:
         return self._client
 
-    def ensure_collection(self) -> None:
-        if self._client.collection_exists(self.collection_name):
+    def ensure_collection_exists(self) -> None:
+        """Create hybrid collection + payload indexes if missing (Forge / validate / ingest)."""
+        existing = self._client.get_collections()
+        existing_names = [c.name for c in existing.collections]
+
+        if self.collection_name in existing_names:
+            _console.print(f"[green]✓ Collection {self.collection_name} already exists[/green]")
             return
+
         self._client.create_collection(
             collection_name=self.collection_name,
             vectors_config={
-                DENSE_VECTOR_NAME: models.VectorParams(size=self.dense_size, distance=models.Distance.COSINE),
+                DENSE_VECTOR_NAME: models.VectorParams(
+                    size=self.dense_size,
+                    distance=models.Distance.COSINE,
+                    on_disk=False,
+                    hnsw_config=models.HnswConfigDiff(
+                        m=16,
+                        ef_construct=100,
+                    ),
+                    datatype=models.Datatype.FLOAT32,
+                ),
             },
             sparse_vectors_config={
-                SPARSE_VECTOR_NAME: models.SparseVectorParams(on_disk=False),
+                SPARSE_VECTOR_NAME: models.SparseVectorParams(
+                    index=models.SparseIndexParams(
+                        on_disk=False,
+                    ),
+                    modifier=models.Modifier.IDF,
+                ),
             },
+            optimizers_config=models.OptimizersConfigDiff(
+                default_segment_number=2,
+            ),
+            replication_factor=1,
         )
-        logger.info("Created Qdrant collection %s", self.collection_name)
+
+        for field in KEYWORD_INDEX_FIELDS:
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+
+        for field in FLOAT_INDEX_FIELDS:
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.FLOAT,
+            )
+
+        for field in INTEGER_INDEX_FIELDS:
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.INTEGER,
+            )
+
+        n_idx = len(KEYWORD_INDEX_FIELDS) + len(FLOAT_INDEX_FIELDS) + len(INTEGER_INDEX_FIELDS)
+        _console.print(
+            f"[green]✓ Created collection {self.collection_name} "
+            f"with {n_idx} payload indexes[/green]"
+        )
+        logger.info("Created Qdrant collection %s with payload indexes", self.collection_name)
 
     def ensure_payload_indexes(self) -> None:
         info = self._client.get_collection(self.collection_name)
@@ -98,6 +164,16 @@ class QdrantWrapper:
                 field_schema=models.PayloadSchemaType.FLOAT,
             )
             logger.info("Created float payload index on %s", field)
+
+        for field in INTEGER_INDEX_FIELDS:
+            if field in existing:
+                continue
+            self._client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name=field,
+                field_schema=models.PayloadSchemaType.INTEGER,
+            )
+            logger.info("Created integer payload index on %s", field)
 
     def point_exists(self, catalogue_id: str) -> bool:
         pid = point_id_for_catalogue_key(catalogue_id)

@@ -1,4 +1,10 @@
-"""Registered component library handlers."""
+"""
+Registered component library handlers (Forge).
+
+All HTML stripping and preprocessing for ingest/dry-run flows through the resolved handler's
+:meth:`tools.handlers.base.ComponentHandler.preprocess`. Shared sequencing lives in
+:mod:`tools.handlers.standard_pipeline`; shared primitives in ``colour_replace`` and ``placeholders``.
+"""
 
 from __future__ import annotations
 

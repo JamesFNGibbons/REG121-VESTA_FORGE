@@ -51,9 +51,7 @@ def run_validate(*, console: "Console") -> None:
         if not settings.deepinfra_api_key:
             issues.append("DEEPINFRA_API_KEY is not set (required for embeddings and search)")
         if not settings.litellm_api_key:
-            issues.append(
-                "LITELLM_API_KEY is not set (required for enrichment unless you always use --skip-enrichment)"
-            )
+            issues.append("LITELLM_API_KEY is not set (required for Qwen enrichment on ingest)")
         if settings.dense_vector_size < 1:
             issues.append("DENSE_VECTOR_SIZE must be >= 1")
 
@@ -78,52 +76,48 @@ def run_validate(*, console: "Console") -> None:
     if q_url and q_key:
         try:
             q = QdrantWrapper(q_url, q_key, q_coll, max_retries=max_retries, dense_size=dense_sz)
-            if not q.client.collection_exists(q_coll):
+            q.ensure_collection_exists()
+            q.ensure_payload_indexes()
+            info = q.client.get_collection(q_coll)
+            console.print(f"[green]Qdrant: connected; collection '{q_coll}' exists.[/green]")
+            params = info.config.params
+            vectors = params.vectors
+            if isinstance(vectors, dict):
+                dense_cfg = vectors.get(DENSE_VECTOR_NAME)
+            else:
+                dense_cfg = vectors
+            if dense_cfg is None:
+                console.print("[red]Qdrant: missing dense vector config.[/red]")
+            else:
+                size = getattr(dense_cfg, "size", None)
+                if size != dense_sz:
+                    console.print(
+                        f"[red]Qdrant: dense vector size is {size}, expected {dense_sz} (DENSE_VECTOR_SIZE).[/red]"
+                    )
+                else:
+                    console.print(
+                        f"[green]Qdrant: dense vector '{DENSE_VECTOR_NAME}' size OK ({dense_sz}).[/green]"
+                    )
+            sparse = getattr(params, "sparse_vectors", None)
+            if not sparse or SPARSE_VECTOR_NAME not in (sparse or {}):
                 console.print(
-                    f"[yellow]Qdrant: collection '{q_coll}' does not exist yet "
-                    f"(it will be created on first ingest).[/yellow]"
+                    f"[yellow]Qdrant: sparse vector '{SPARSE_VECTOR_NAME}' not found in collection config.[/yellow]"
                 )
             else:
-                info = q.client.get_collection(q_coll)
-                console.print(f"[green]Qdrant: connected; collection '{q_coll}' exists.[/green]")
-                params = info.config.params
-                vectors = params.vectors
-                if isinstance(vectors, dict):
-                    dense_cfg = vectors.get(DENSE_VECTOR_NAME)
-                else:
-                    dense_cfg = vectors
-                if dense_cfg is None:
-                    console.print("[red]Qdrant: missing dense vector config.[/red]")
-                else:
-                    size = getattr(dense_cfg, "size", None)
-                    if size != dense_sz:
-                        console.print(
-                            f"[red]Qdrant: dense vector size is {size}, expected {dense_sz} (DENSE_VECTOR_SIZE).[/red]"
-                        )
-                    else:
-                        console.print(
-                            f"[green]Qdrant: dense vector '{DENSE_VECTOR_NAME}' size OK ({dense_sz}).[/green]"
-                        )
-                sparse = getattr(params, "sparse_vectors", None)
-                if not sparse or SPARSE_VECTOR_NAME not in (sparse or {}):
-                    console.print(
-                        f"[yellow]Qdrant: sparse vector '{SPARSE_VECTOR_NAME}' not found in collection config.[/yellow]"
-                    )
-                else:
-                    console.print(f"[green]Qdrant: sparse vector '{SPARSE_VECTOR_NAME}' configured.[/green]")
+                console.print(f"[green]Qdrant: sparse vector '{SPARSE_VECTOR_NAME}' configured.[/green]")
 
-                if info.payload_schema:
-                    console.print(
-                        f"[green]Qdrant: payload schema has {len(info.payload_schema)} indexed field(s).[/green]"
-                    )
-                else:
-                    console.print("[yellow]Qdrant: no payload indexes reported (run ingest to create them).[/yellow]")
+            if info.payload_schema:
+                console.print(
+                    f"[green]Qdrant: payload schema has {len(info.payload_schema)} indexed field(s).[/green]"
+                )
+            else:
+                console.print("[yellow]Qdrant: no payload indexes reported (run ingest to create them).[/yellow]")
 
-                sample = q.scroll_sample(limit=1)
-                if sample:
-                    console.print(f"[green]Qdrant: sample scroll returned {len(sample)} point(s).[/green]")
-                else:
-                    console.print("[dim]Qdrant: collection is empty (no points yet).[/dim]")
+            sample = q.scroll_sample(limit=1)
+            if sample:
+                console.print(f"[green]Qdrant: sample scroll returned {len(sample)} point(s).[/green]")
+            else:
+                console.print("[dim]Qdrant: collection is empty (no points yet).[/dim]")
         except Exception as exc:
             console.print(f"[red]Qdrant connectivity failed: {exc}[/red]")
             logger.exception("Qdrant validate")

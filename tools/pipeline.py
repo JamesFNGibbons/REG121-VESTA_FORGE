@@ -1,4 +1,7 @@
-"""Ingestion orchestration, Rich progress, and payload assembly."""
+"""Ingestion orchestration, Rich progress, and payload assembly.
+
+Component HTML is never stripped or transformed here: only ``handler.preprocess(raw)`` (Forge).
+"""
 
 from __future__ import annotations
 
@@ -143,7 +146,6 @@ def run_ingest(
     ids: list[str],
     dry_run: bool,
     force: bool,
-    skip_enrichment: bool,
     handler_cli: str | None = None,
 ) -> dict[str, int]:
     lib_root: Path = settings.component_library_root
@@ -212,26 +214,20 @@ def run_ingest(
                             f"preprocess ({hid}): artifacts={n_art}, colours={n_col}, placeholders={n_ph}"
                         )
 
-                        if skip_enrichment:
-                            _set_step("enrich (skipped)…")
-                            step("enriching with Qwen… (skipped)")
-                            inspection = InspectionResult()
-                            embedding_text = build_embedding_text(catalogue=row, enrichment=None)
-                        else:
-                            _set_step("enriching (Qwen, may be slow)…")
-                            step("enriching with Qwen…")
-                            inspection = inspect_component(
-                                base_url=settings.litellm_base_url,
-                                api_key=settings.litellm_api_key,
-                                model=settings.litellm_inspector_model,
-                                catalogue=row,
-                                html=processed,
-                                max_retries=settings.ingest_max_retries,
-                            )
-                            embedding_text = build_embedding_text(
-                                catalogue=row,
-                                enrichment=inspection.model_dump(),
-                            )
+                        _set_step("enriching (Qwen, may be slow)…")
+                        step("enriching with Qwen…")
+                        inspection = inspect_component(
+                            base_url=settings.litellm_base_url,
+                            api_key=settings.litellm_api_key,
+                            model=settings.litellm_inspector_model,
+                            catalogue=row,
+                            html=processed,
+                            max_retries=settings.ingest_max_retries,
+                        )
+                        embedding_text = build_embedding_text(
+                            catalogue=row,
+                            enrichment=inspection.model_dump(),
+                        )
 
                         _set_step("embeddings (DeepInfra + SPLADE)…")
                         step("generating embeddings…")

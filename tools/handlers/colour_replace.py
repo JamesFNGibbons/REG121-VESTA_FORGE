@@ -1,4 +1,9 @@
-"""Tailwind colour utility → inline style via BeautifulSoup (per-token logic, not whole-attribute regex)."""
+"""
+Shared Forge stage: Tailwind colour utility → inline style via BeautifulSoup (per-token logic).
+
+Invoked only from :mod:`tools.handlers.standard_pipeline`; library rules come from the handler's
+:meth:`~tools.handlers.base.ComponentHandler.map_colour_class`.
+"""
 
 from __future__ import annotations
 

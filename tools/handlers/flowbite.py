@@ -1,4 +1,4 @@
-"""Flowbite stub — delegates to generic until Flowbite-specific rules land."""
+"""Flowbite stub — library-specific hooks inherit generic; Forge entry is Generic.preprocess."""
 
 from __future__ import annotations
 

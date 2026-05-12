@@ -1,4 +1,10 @@
-"""HyperUI-oriented preprocessing (MIT)."""
+"""
+HyperUI-oriented preprocessing (MIT).
+
+Forge entrypoint is inherited :meth:`~tools.handlers.generic.GenericComponentHandler.preprocess`
+(standard pipeline). HyperUI-specific behaviour is confined to :meth:`colour_map` /
+:meth:`map_colour_class` and inherited strip/remove hooks from generic.
+"""
 
 from __future__ import annotations
 

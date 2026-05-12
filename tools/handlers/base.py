@@ -1,4 +1,12 @@
-"""Abstract base for library-specific HTML preprocessing."""
+"""
+Abstract base for library-specific HTML preprocessing (Forge).
+
+Orchestration for the default MIT/Tailwind pipeline lives in
+:mod:`tools.handlers.standard_pipeline` and is invoked from
+:class:`tools.handlers.generic.GenericComponentHandler` (and subclasses). Ingest and dry-run only
+mutate HTML via :meth:`ComponentHandler.preprocess` on the resolved handler — no stripping or
+processing elsewhere.
+"""
 
 from __future__ import annotations
 
@@ -46,38 +54,13 @@ class ComponentHandler(ABC):
         """
         return None
 
+    @abstractmethod
     def preprocess(self, raw_html: str) -> tuple[str, dict[str, Any]]:
-        self._artifact_log = []
-        report: dict[str, Any] = {
-            "errors": [],
-            "extraction_notes": [],
-            "artifacts_removed": [],
-            "colour_replacements": [],
-            "placeholders_added": [],
-            "raw_len": len(raw_html),
-        }
-        try:
-            html = self.extract_component(raw_html)
-            report["extraction_notes"].append("extract_component applied")
-            report["after_extract_len"] = len(html)
-            html = self.remove_library_artifacts(html)
-            report["artifacts_removed"] = list(self._artifact_log)
-            from tools.handlers.colour_replace import apply_tailwind_colour_mapping
-
-            html, colour_rep = apply_tailwind_colour_mapping(html, self)
-            report["colour_replacements"] = colour_rep
-            html = self.add_placeholders(html)
-            from tools.handlers.placeholders import apply_placeholders as ph
-
-            html, ph_rep = ph(html)
-            report["placeholders_added"] = ph_rep
-            report["final_len"] = len(html)
-            merged = self.get_preprocessing_report(raw_html, html, report)
-            return html, merged
-        except Exception as exc:  # noqa: BLE001
-            report["errors"].append(str(exc))
-            merged = self.get_preprocessing_report(raw_html, raw_html, report)
-            return raw_html, merged
+        """
+        Full Forge pipeline for one component file. Implement by delegating to
+        :func:`tools.handlers.standard_pipeline.run_standard_forge` or a custom chain; ingest/dry-run
+        call only this method for HTML transformation.
+        """
 
     def get_preprocessing_report(
         self, raw: str, processed: str, pipeline_report: dict[str, Any] | None = None
