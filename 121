@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# REG121 control plane — Docker-first. Run from the repository root.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export COMPOSE_FILE="${COMPOSE_FILE:-$ROOT/docker-compose.yml}"
+
+_load_host_lib() {
+  if [[ -n "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+    return 0
+  fi
+  if [[ -f "$ROOT/.reg121/component_library_root" ]]; then
+    HOST_COMPONENT_LIBRARY="$(tr -d '\r\n' <"$ROOT/.reg121/component_library_root")"
+    export HOST_COMPONENT_LIBRARY
+  fi
+}
+
+_usage() {
+  cat <<'EOF'
+REG121 — Docker control (./121)
+
+  ./121 up                 Build images (app + tool)
+  ./121 down               docker compose down (cleans project network/volumes metadata)
+  ./121 build              docker compose build
+
+  ./121 library configure  Interactive Questionary wizard — writes .reg121/component_library_root
+  ./121 library status     Show configured library path and catalogue size
+
+  ./121 ingest [args]      docker compose run — add --interactive for TUI
+  ./121 validate
+  ./121 stats
+  ./121 search [args]
+
+  ./121 shell              One-off bash in the app container (docker compose run)
+
+Copy .env.example to .env. The component library (catalogue.py + HTML) lives outside this repo.
+EOF
+}
+
+_run_app() {
+  (cd "$ROOT" && docker compose run --rm -it app "$@")
+}
+
+case "${1:-help}" in
+  -h|--help|help|"")
+    _usage
+    ;;
+  up|build)
+    shift || true
+    (cd "$ROOT" && docker compose build "$@")
+    ;;
+  down)
+    shift || true
+    (cd "$ROOT" && docker compose down "$@")
+    ;;
+  library)
+    shift || true
+    case "${1:-}" in
+      configure)
+        (cd "$ROOT" && docker compose run --rm -it tool)
+        ;;
+      status)
+        _load_host_lib
+        if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+          echo "No library configured. Run: ./121 library configure" >&2
+          exit 1
+        fi
+        _run_app python -m tools.ingest_components library status
+        ;;
+      *)
+        echo "usage: ./121 library {configure|status}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  ingest|validate|stats)
+    cmd="$1"
+    shift || true
+    _load_host_lib
+    if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+      echo "Missing component library path. Run: ./121 library configure" >&2
+      exit 1
+    fi
+    _run_app python -m tools.ingest_components "$cmd" "$@"
+    ;;
+  search)
+    shift || true
+    _load_host_lib
+    if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+      echo "Missing component library path. Run: ./121 library configure" >&2
+      exit 1
+    fi
+    _run_app python -m tools.ingest_components search "$@"
+    ;;
+  shell)
+    _load_host_lib
+    if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+      echo "Missing component library path. Run: ./121 library configure" >&2
+      exit 1
+    fi
+    _run_app bash
+    ;;
+  run)
+    shift || true
+    _load_host_lib
+    if [[ -z "${HOST_COMPONENT_LIBRARY:-}" ]]; then
+      echo "Missing component library path. Run: ./121 library configure" >&2
+      exit 1
+    fi
+    _run_app "$@"
+    ;;
+  *)
+    echo "Unknown command: ${1:-}" >&2
+    _usage
+    exit 1
+    ;;
+esac

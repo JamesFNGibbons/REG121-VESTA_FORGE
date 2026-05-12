@@ -1,0 +1,6 @@
+.env
+.reg121/
+__pycache__/
+*.pyc
+.venv/
+.python-version
