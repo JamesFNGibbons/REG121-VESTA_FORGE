@@ -145,7 +145,6 @@ def run_ingest(
     force: bool,
     skip_enrichment: bool,
     handler_cli: str | None = None,
-    wizard_handler_id: str | None = None,
 ) -> dict[str, int]:
     lib_root: Path = settings.component_library_root
     counts: dict[str, int] = {"ingested": 0, "skipped": 0, "failed": 0}
@@ -199,7 +198,7 @@ def run_ingest(
                             raise FileNotFoundError(f"Missing HTML file: {path}")
 
                         html_raw = path.read_text(encoding="utf-8")
-                        eff_cli = handler_cli or wizard_handler_id
+                        eff_cli = handler_cli
                         handler, hid = resolve_handler_for_row(
                             handler_cli=eff_cli,
                             catalogue_row=row,

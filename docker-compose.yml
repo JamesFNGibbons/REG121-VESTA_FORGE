@@ -10,7 +10,8 @@ services:
     env_file:
       - .env
     environment:
-      COMPONENT_LIBRARY_ROOT: /library
+      # import_bin is mounted at /library; catalogue lives in /library/<FORGE_DEFAULT_HANDLER>/ (e.g. hyperui).
+      COMPONENT_LIBRARY_ROOT: /library/${FORGE_DEFAULT_HANDLER:-hyperui}
       REG121_REPO_ROOT: /app
       PYTHONPATH: /app
     volumes:

@@ -12,7 +12,13 @@ from rich.console import Console
 from tools.catalogue_loader import load_catalogue
 from tools.dry_run import run_forge_dry_run
 from tools.handlers import list_handlers
-from tools.interactive_flow import configure_library_interactive, library_status, run_interactive_ingest_wizard
+from tools.interactive_flow import (
+    configure_library_interactive,
+    library_status,
+    prompt_forge_handler_interactive,
+    run_interactive_ingest_wizard,
+)
+from tools.paths_config import write_forge_handler_slug
 from tools.pipeline import normalize_category, resolve_catalogue_ids, run_ingest
 from tools.qdrant_wrapper import QdrantWrapper
 from tools.settings import load_settings
@@ -87,11 +93,13 @@ def ingest_cmd(
 ) -> None:
     _ensure_repo_on_path()
     settings = load_settings()
+    if handler:
+        write_forge_handler_slug(handler)
+        settings = load_settings()
     catalogue = load_catalogue(settings.component_library_root)
 
     use_all, use_category, use_id = all_flag, category, single_id
     use_dry, use_skip, use_force = dry_run, skip_enrichment, force
-    wizard_handler_id: str | None = None
 
     selection_count = sum(bool(x) for x in (use_all, use_category, use_id))
     if interactive and selection_count > 0:
@@ -100,9 +108,12 @@ def ingest_cmd(
     if interactive or selection_count == 0:
         if not sys.stdin.isatty():
             raise click.UsageError("Interactive mode requires a TTY (use --all, --category, or --id).")
-        a, c, i, dr, se, ff, wh = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
+        if handler is None:
+            prompt_forge_handler_interactive(settings=settings)
+            settings = load_settings()
+            catalogue = load_catalogue(settings.component_library_root)
+        a, c, i, dr, se, ff = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
         use_all, use_category, use_id, use_dry, use_skip, use_force = a, c, i, dr, se, ff
-        wizard_handler_id = wh
     elif selection_count != 1:
         raise click.UsageError("Choose exactly one of: --all, --category, --id (or use --interactive).")
 
@@ -142,7 +153,6 @@ def ingest_cmd(
         force=use_force,
         skip_enrichment=use_skip,
         handler_cli=handler,
-        wizard_handler_id=wizard_handler_id,
     )
 
 
@@ -197,6 +207,9 @@ def dry_run_cmd(handler: str | None) -> None:
     """Full diagnostic dry-run (Qwen, embeddings, Qdrant); not the same as ingest --dry-run."""
     _ensure_repo_on_path()
     settings = load_settings()
+    if handler:
+        write_forge_handler_slug(handler)
+        settings = load_settings()
     catalogue = load_catalogue(settings.component_library_root)
     if not settings.litellm_api_key:
         raise click.UsageError("LITELLM_API_KEY required for enrichment step.")

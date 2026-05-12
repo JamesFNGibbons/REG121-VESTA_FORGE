@@ -10,7 +10,28 @@ _load_host_lib() {
     return 0
   fi
   if [[ -f "$ROOT/.reg121/component_library_root" ]]; then
-    HOST_COMPONENT_LIBRARY="$(tr -d '\r\n' <"$ROOT/.reg121/component_library_root")"
+    p="$(tr -d '\r\n' <"$ROOT/.reg121/component_library_root")"
+    if [[ "$(basename "$p")" == "import_bin" ]]; then
+      HOST_COMPONENT_LIBRARY="$p"
+    elif [[ "$(basename "$(dirname "$p")")" == "import_bin" ]]; then
+      # e.g. .../import_bin/hyperui → mount parent import_bin
+      HOST_COMPONENT_LIBRARY="$(dirname "$p")"
+    else
+      HOST_COMPONENT_LIBRARY="$p"
+    fi
+    export HOST_COMPONENT_LIBRARY
+    return 0
+  fi
+  if [[ -f "$ROOT/.reg121/forge_handler" ]]; then
+    _fh="$(tr -d '\r\n' <"$ROOT/.reg121/forge_handler")"
+    if [[ -n "$_fh" && -f "$ROOT/import_bin/${_fh}/catalogue.py" ]]; then
+      HOST_COMPONENT_LIBRARY="$ROOT/import_bin"
+      export HOST_COMPONENT_LIBRARY
+      return 0
+    fi
+  fi
+  if [[ -f "$ROOT/import_bin/hyperui/catalogue.py" ]]; then
+    HOST_COMPONENT_LIBRARY="$ROOT/import_bin"
     export HOST_COMPONENT_LIBRARY
     return 0
   fi
@@ -31,6 +52,7 @@ REG121 — Docker control (./121)
   ./121 library configure  Interactive Questionary wizard — writes .reg121/component_library_root
   ./121 library status     Show configured library path and catalogue size
 
+  ./121 run                Interactive ingest wizard (same as ingest --interactive)
   ./121 ingest [args]      docker compose run — add --interactive for TUI
   ./121 handlers           List Forge preprocessor handlers + Qdrant ingest counts
   ./121 dry-run [--handler …]  Full diagnostic (Qwen, embeddings, Qdrant)
@@ -117,7 +139,11 @@ case "${1:-help}" in
       echo "Missing component library path. Populate import_bin/ (see examples/component-library-starter) or run: ./121 library configure" >&2
       exit 1
     fi
-    _run_app "$@"
+    if [[ $# -eq 0 ]]; then
+      _run_app python -m tools.ingest_components ingest --interactive
+    else
+      _run_app "$@"
+    fi
     ;;
   test)
     _load_host_lib

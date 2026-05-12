@@ -12,7 +12,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 from tools.catalogue_loader import load_catalogue
-from tools.paths_config import component_library_config_file, repo_root, resolve_component_library_root
+from tools.paths_config import (
+    component_library_config_file,
+    forge_handler_config_file,
+    import_bin_root,
+    read_forge_handler_slug,
+    repo_root,
+    resolve_component_library_root,
+    write_forge_handler_slug,
+)
 
 console = Console(stderr=True)
 
@@ -30,27 +38,54 @@ def _style() -> questionary.Style:
     )
 
 
+def prompt_forge_handler_interactive(*, settings: Any) -> str:
+    """Questionary: pick handler id; persists to .reg121/forge_handler."""
+    from tools.handlers import list_handlers
+
+    style = _style()
+    hchoices = [
+        f"{h['id']} — {h['name']}" + (" (stub — generic)" if h["stub"] else "") for h in list_handlers()
+    ]
+    default_h = str(getattr(settings, "forge_default_handler", "hyperui") or "hyperui").lower()
+    default_label = next((c for c in hchoices if c.startswith(default_h + " ")), hchoices[0])
+    hpick = questionary.select(
+        "Which Forge handler / library layout? (sources load from import_bin/<handler>/)",
+        choices=hchoices,
+        default=default_label,
+        style=style,
+    ).ask()
+    if hpick is None:
+        raise click.Abort()
+    slug = hpick.split(" — ", 1)[0].strip().lower()
+    write_forge_handler_slug(slug)
+    return slug
+
+
 def configure_library_interactive() -> Path:
-    """Prompt for absolute path, validate catalogue.py, persist to .reg121/component_library_root."""
-    root = repo_root()
-    default_import = str((root / "import_bin").resolve())
+    """Pick handler (for in-repo import_bin), then path; persist forge_handler + optional component_library_root."""
+    style = _style()
     console.print(
         Panel.fit(
             "[bold]Component library[/bold]\n\n"
-            "Default in this repo: [cyan]import_bin/[/cyan] (mounted at [cyan]/library[/cyan] in Docker).\n"
-            "You may point to any other directory that contains [cyan]catalogue.py[/cyan] and your HTML files.\n"
-            "See [dim]examples/component-library-starter/[/dim] for a template.",
+            "In-repo layout: [cyan]import_bin/<handler>/catalogue.py[/cyan] (e.g. [cyan]import_bin/hyperui/[/cyan]).\n"
+            "Pick a handler first, then confirm or edit the absolute path.\n"
+            "For a library outside this repo, pick any handler then enter your full path.",
             title="121 · library configure",
             border_style="cyan",
         )
     )
 
-    style = _style()
+    from tools.settings import load_settings
+
+    settings = load_settings()
+    slug = prompt_forge_handler_interactive(settings=settings)
+
+    default_path = str((import_bin_root() / slug).resolve())
 
     while True:
         raw = questionary.text(
-            "Absolute path to your component library directory:",
-            default=default_import,
+            "Absolute path to directory containing catalogue.py:",
+            default=default_path,
             style=style,
         ).ask()
         if raw is None:
@@ -89,9 +124,18 @@ def configure_library_interactive() -> Path:
 
         cfg_dir = repo_root() / ".reg121"
         cfg_dir.mkdir(parents=True, exist_ok=True)
+        ib = import_bin_root().resolve()
+        pr = path.resolve()
+        if pr == ib:
+            write_forge_handler_slug(slug)
+        elif pr.parent == ib:
+            write_forge_handler_slug(pr.name)
+        else:
+            write_forge_handler_slug(slug)
         cfg_file = component_library_config_file()
         cfg_file.write_text(str(path) + "\n", encoding="utf-8")
-        console.print(f"[green]✓[/green] Saved to [dim]{cfg_file}[/dim]")
+        console.print(f"[green]✓[/green] Saved library path to [dim]{cfg_file}[/dim]")
+        console.print(f"[green]✓[/green] Handler preference [dim]{forge_handler_config_file()}[/dim] → [bold]{read_forge_handler_slug()}[/bold]")
         console.print(
             Panel(
                 "[bold]Next[/bold]\n"
@@ -106,17 +150,17 @@ def configure_library_interactive() -> Path:
 
 def library_status() -> None:
     try:
-        root = resolve_component_library_root()
+        lib_root = resolve_component_library_root()
     except RuntimeError as exc:
         console.print(Panel(str(exc), title="121 · library", border_style="yellow"))
         return
 
-    if not root.is_dir():
-        console.print(f"[yellow]Path is not a directory from this environment:[/yellow] {root}")
+    if not lib_root.is_dir():
+        console.print(f"[yellow]Path is not a directory from this environment:[/yellow] {lib_root}")
         return
 
     try:
-        cat = load_catalogue(root)
+        cat = load_catalogue(lib_root)
     except Exception as exc:
         console.print(f"[yellow]Could not load catalogue:[/yellow] {exc}")
         return
@@ -124,10 +168,12 @@ def library_status() -> None:
     table = Table(title="Component library", show_header=True, header_style="bold")
     table.add_column("Property")
     table.add_column("Value")
-    table.add_row("Root", str(root))
+    table.add_row("Resolved root", str(lib_root))
+    table.add_row("Forge handler file", str(forge_handler_config_file()))
+    table.add_row("Forge handler slug", read_forge_handler_slug())
     table.add_row("Components", str(len(cat)))
     cfg = component_library_config_file()
-    table.add_row("Config file", str(cfg) if cfg.is_file() else "(env COMPONENT_LIBRARY_ROOT only)")
+    table.add_row("Library path file", str(cfg) if cfg.is_file() else "(not set)")
     console.print(table)
 
 
@@ -135,12 +181,13 @@ def run_interactive_ingest_wizard(
     *,
     settings: Any,
     catalogue: dict[str, dict[str, Any]],
-) -> tuple[bool, str | None, str | None, bool, bool, bool, str]:
-    """Returns (all_flag, category, single_id, dry_run, skip_enrichment, force, handler_id)."""
+) -> tuple[bool, str | None, str | None, bool, bool, bool]:
+    """Returns (all_flag, category, single_id, dry_run, skip_enrichment, force). Handler is chosen before wizard."""
     style = _style()
     console.print(
         Panel.fit(
             f"[dim]Library:[/dim] [bold]{settings.component_library_root}[/bold]\n"
+            f"[dim]Handler:[/dim] [bold]{read_forge_handler_slug()}[/bold]\n"
             f"[dim]Components:[/dim] [bold]{len(catalogue)}[/bold]",
             title="121 · ingest",
             border_style="magenta",
@@ -186,23 +233,6 @@ def run_interactive_ingest_wizard(
             raise click.Abort()
         single_id = pick.split(" — ", 1)[0]
 
-    from tools.handlers import list_handlers
-
-    hchoices = [
-        f"{h['id']} — {h['name']}" + (" (stub — generic)" if h["stub"] else "") for h in list_handlers()
-    ]
-    default_h = str(getattr(settings, "forge_default_handler", "hyperui") or "hyperui").lower()
-    default_label = next((c for c in hchoices if c.startswith(default_h + " ")), hchoices[0])
-    hpick = questionary.select(
-        "Preprocessor handler:",
-        choices=hchoices,
-        default=default_label,
-        style=style,
-    ).ask()
-    if hpick is None:
-        raise click.Abort()
-    handler_id = hpick.split(" — ", 1)[0].strip().lower()
-
     dry_run = questionary.confirm("Dry run (no Qdrant writes / no embeddings)?", default=False, style=style).ask()
     if dry_run is None:
         raise click.Abort()
@@ -220,4 +250,4 @@ def run_interactive_ingest_wizard(
     if not questionary.confirm("Start ingestion now?", default=True, style=style).ask():
         raise click.Abort()
 
-    return all_flag, category, single_id, dry_run, skip_enrichment, force, handler_id
+    return all_flag, category, single_id, dry_run, skip_enrichment, force

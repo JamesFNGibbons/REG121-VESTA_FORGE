@@ -27,7 +27,8 @@ def run_validate(*, console: "Console") -> None:
             Panel(
                 "Run [cyan]./121 library configure[/cyan] (host) or [cyan]library configure[/cyan] inside the "
                 "container, or set [bold]COMPONENT_LIBRARY_ROOT[/bold].\n"
-                "By default the repo uses [bold]import_bin/[/bold] (see examples/component-library-starter/).",
+                "By default the repo uses [bold]import_bin/<handler>/[/bold] (e.g. [bold]import_bin/hyperui/[/bold]; "
+                "see [cyan]examples/component-library-starter/[/cyan]).",
                 title="Component library not configured",
                 border_style="yellow",
             )
