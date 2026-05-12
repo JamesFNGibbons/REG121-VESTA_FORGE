@@ -10,6 +10,8 @@ import click
 from rich.console import Console
 
 from tools.catalogue_loader import load_catalogue
+from tools.dry_run import run_forge_dry_run
+from tools.handlers import list_handlers
 from tools.interactive_flow import configure_library_interactive, library_status, run_interactive_ingest_wizard
 from tools.pipeline import normalize_category, resolve_catalogue_ids, run_ingest
 from tools.qdrant_wrapper import QdrantWrapper
@@ -51,6 +53,9 @@ def library_status_cmd() -> None:
     library_status()
 
 
+_HANDLER_IDS = ("hyperui", "flowbite", "preline", "meraki", "generic")
+
+
 @cli.command("ingest")
 @click.option("--all", "all_flag", is_flag=True, help="Ingest every catalogue entry.")
 @click.option("--category", type=str, default=None, help="Filter by catalogue category (e.g. hero, feature).")
@@ -58,6 +63,12 @@ def library_status_cmd() -> None:
 @click.option("--dry-run", is_flag=True, help="Run checks and enrichment but do not write to Qdrant.")
 @click.option("--force", is_flag=True, help="Upsert even if the point already exists.")
 @click.option("--skip-enrichment", is_flag=True, help="Skip LiteLLM/Qwen; embeddings use catalogue text only.")
+@click.option(
+    "--handler",
+    type=click.Choice(_HANDLER_IDS),
+    default=None,
+    help="HTML preprocessor handler (overrides catalogue + FORGE_DEFAULT_HANDLER).",
+)
 @click.option(
     "--interactive",
     "interactive",
@@ -72,6 +83,7 @@ def ingest_cmd(
     force: bool,
     skip_enrichment: bool,
     interactive: bool,
+    handler: str | None,
 ) -> None:
     _ensure_repo_on_path()
     settings = load_settings()
@@ -79,6 +91,7 @@ def ingest_cmd(
 
     use_all, use_category, use_id = all_flag, category, single_id
     use_dry, use_skip, use_force = dry_run, skip_enrichment, force
+    wizard_handler_id: str | None = None
 
     selection_count = sum(bool(x) for x in (use_all, use_category, use_id))
     if interactive and selection_count > 0:
@@ -87,8 +100,9 @@ def ingest_cmd(
     if interactive or selection_count == 0:
         if not sys.stdin.isatty():
             raise click.UsageError("Interactive mode requires a TTY (use --all, --category, or --id).")
-        a, c, i, dr, se, ff = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
+        a, c, i, dr, se, ff, wh = run_interactive_ingest_wizard(settings=settings, catalogue=catalogue)
         use_all, use_category, use_id, use_dry, use_skip, use_force = a, c, i, dr, se, ff
+        wizard_handler_id = wh
     elif selection_count != 1:
         raise click.UsageError("Choose exactly one of: --all, --category, --id (or use --interactive).")
 
@@ -127,6 +141,89 @@ def ingest_cmd(
         dry_run=use_dry,
         force=use_force,
         skip_enrichment=use_skip,
+        handler_cli=handler,
+        wizard_handler_id=wizard_handler_id,
+    )
+
+
+@cli.command("handlers")
+def handlers_cmd() -> None:
+    """List registered preprocessor handlers and ingested counts from Qdrant."""
+    _ensure_repo_on_path()
+    settings = load_settings()
+    from rich.table import Table
+
+    counts: dict[str, int] = {}
+    if settings.qdrant_url and settings.qdrant_api_key:
+        try:
+            q = QdrantWrapper(
+                settings.qdrant_url,
+                settings.qdrant_api_key,
+                settings.qdrant_collection_name,
+                max_retries=settings.ingest_max_retries,
+                dense_size=settings.dense_vector_size,
+            )
+            if q.client.collection_exists(settings.qdrant_collection_name):
+                counts = q.count_points_by_forge_handler()
+        except Exception:
+            counts = {}
+
+    table = Table(title="Forge handlers", show_header=True, header_style="bold")
+    table.add_column("id")
+    table.add_column("name")
+    table.add_column("implementation")
+    table.add_column("palette")
+    table.add_column("ingested", justify="right")
+    for h in list_handlers():
+        hid = h["id"]
+        table.add_row(
+            hid,
+            h["name"],
+            h["implementation"],
+            h["palette"],
+            str(counts.get(hid, 0)),
+        )
+    console.print(table)
+
+
+@cli.command("dry-run")
+@click.option(
+    "--handler",
+    type=click.Choice(_HANDLER_IDS),
+    default=None,
+    help="Preprocessor handler (defaults to FORGE_DEFAULT_HANDLER).",
+)
+def dry_run_cmd(handler: str | None) -> None:
+    """Full diagnostic dry-run (Qwen, embeddings, Qdrant); not the same as ingest --dry-run."""
+    _ensure_repo_on_path()
+    settings = load_settings()
+    catalogue = load_catalogue(settings.component_library_root)
+    if not settings.litellm_api_key:
+        raise click.UsageError("LITELLM_API_KEY required for enrichment step.")
+    if not settings.deepinfra_api_key:
+        raise click.UsageError("DEEPINFRA_API_KEY required for embedding step.")
+    if not settings.qdrant_url or not settings.qdrant_api_key:
+        raise click.UsageError("QDRANT_URL and QDRANT_API_KEY required for Qdrant step.")
+    code = run_forge_dry_run(console=console, settings=settings, catalogue=catalogue, handler_cli=handler)
+    raise SystemExit(code)
+
+
+@cli.command("classify")
+@click.option("--inbox", is_flag=True, help="Reserved for inbox classification (not implemented).")
+@click.option("--handler", type=click.Choice(_HANDLER_IDS), default=None, help="Reserved for future inbox routing.")
+def classify_cmd(inbox: bool, handler: str | None) -> None:  # noqa: ARG001
+    """Stub: inbox classification is not implemented yet."""
+    _ensure_repo_on_path()
+    from rich.panel import Panel
+
+    console.print(
+        Panel(
+            "[yellow]classify[/yellow] is not implemented yet.\n"
+            "Use [cyan]ingest[/cyan] for catalogue-driven ingestion.\n"
+            f"[dim]--inbox / --handler {handler!r} are accepted for forward compatibility.[/dim]",
+            title="121 · classify",
+            border_style="yellow",
+        )
     )
 
 

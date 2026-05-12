@@ -135,8 +135,8 @@ def run_interactive_ingest_wizard(
     *,
     settings: Any,
     catalogue: dict[str, dict[str, Any]],
-) -> tuple[bool, str | None, str | None, bool, bool, bool]:
-    """Returns (all_flag, category, single_id, dry_run, skip_enrichment, force)."""
+) -> tuple[bool, str | None, str | None, bool, bool, bool, str]:
+    """Returns (all_flag, category, single_id, dry_run, skip_enrichment, force, handler_id)."""
     style = _style()
     console.print(
         Panel.fit(
@@ -186,6 +186,23 @@ def run_interactive_ingest_wizard(
             raise click.Abort()
         single_id = pick.split(" — ", 1)[0]
 
+    from tools.handlers import list_handlers
+
+    hchoices = [
+        f"{h['id']} — {h['name']}" + (" (stub — generic)" if h["stub"] else "") for h in list_handlers()
+    ]
+    default_h = str(getattr(settings, "forge_default_handler", "hyperui") or "hyperui").lower()
+    default_label = next((c for c in hchoices if c.startswith(default_h + " ")), hchoices[0])
+    hpick = questionary.select(
+        "Preprocessor handler:",
+        choices=hchoices,
+        default=default_label,
+        style=style,
+    ).ask()
+    if hpick is None:
+        raise click.Abort()
+    handler_id = hpick.split(" — ", 1)[0].strip().lower()
+
     dry_run = questionary.confirm("Dry run (no Qdrant writes / no embeddings)?", default=False, style=style).ask()
     if dry_run is None:
         raise click.Abort()
@@ -203,4 +220,4 @@ def run_interactive_ingest_wizard(
     if not questionary.confirm("Start ingestion now?", default=True, style=style).ask():
         raise click.Abort()
 
-    return all_flag, category, single_id, dry_run, skip_enrichment, force
+    return all_flag, category, single_id, dry_run, skip_enrichment, force, handler_id

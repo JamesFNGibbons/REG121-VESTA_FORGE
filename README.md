@@ -1,6 +1,6 @@
 # REG121 AI — Component vectoriser
 
-Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings (**DeepInfra** dense + SPLADE sparse) and optional **Qwen** enrichment via **LiteLLM**.
+Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings (**DeepInfra** dense + SPLADE sparse), optional **Qwen** enrichment via **LiteLLM**, and pluggable **Forge** HTML preprocessors (`FORGE_DEFAULT_HANDLER`, default **hyperui**; set **`FORGE_DEFAULT_HANDLER=generic`** for unknown libraries — see [`tools/README.md`](tools/README.md)).
 
 ## Docker-first workflow
 

@@ -32,9 +32,13 @@ REG121 — Docker control (./121)
   ./121 library status     Show configured library path and catalogue size
 
   ./121 ingest [args]      docker compose run — add --interactive for TUI
+  ./121 handlers           List Forge preprocessor handlers + Qdrant ingest counts
+  ./121 dry-run [--handler …]  Full diagnostic (Qwen, embeddings, Qdrant)
+  ./121 classify [--inbox] (stub)
   ./121 validate
   ./121 stats
   ./121 search [args]
+  ./121 test               Quick import + compile check inside Docker
 
   ./121 shell              One-off bash in the app container (docker compose run)
 
@@ -79,7 +83,7 @@ case "${1:-help}" in
         ;;
     esac
     ;;
-  ingest|validate|stats)
+  ingest|validate|stats|handlers|dry-run|classify)
     cmd="$1"
     shift || true
     _load_host_lib
@@ -114,6 +118,19 @@ case "${1:-help}" in
       exit 1
     fi
     _run_app "$@"
+    ;;
+  test)
+    _load_host_lib
+    (cd "$ROOT" && docker compose run --rm app python -c "
+import compileall
+from pathlib import Path
+root = Path('/app')
+assert compileall.compile_dir(str(root / 'tools'), quiet=1)
+from tools.handlers import get_handler, list_handlers
+assert len(list_handlers()) >= 5
+get_handler('hyperui')
+print('121 test: OK')
+")
     ;;
   *)
     echo "Unknown command: ${1:-}" >&2

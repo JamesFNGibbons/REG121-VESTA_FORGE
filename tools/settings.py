@@ -19,6 +19,7 @@ class Settings:
     deepinfra_api_key: str
     deepinfra_embedding_model: str
     dense_vector_size: int
+    forge_default_handler: str
     ingest_batch_size: int
     ingest_max_retries: int
     component_library_root: Path
@@ -40,6 +41,7 @@ def _settings_for(lib: Path) -> Settings:
             "DEEPINFRA_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B"
         ).strip(),
         dense_vector_size=int(os.getenv("DENSE_VECTOR_SIZE", "2560")),
+        forge_default_handler=os.getenv("FORGE_DEFAULT_HANDLER", "hyperui").strip().lower() or "hyperui",
         ingest_batch_size=int(os.getenv("INGEST_BATCH_SIZE", "5")),
         ingest_max_retries=int(os.getenv("INGEST_MAX_RETRIES", "3")),
         component_library_root=lib,

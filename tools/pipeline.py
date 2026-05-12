@@ -22,6 +22,7 @@ from rich.table import Table
 from rich.text import Text
 
 from tools.embeddings import build_embedding_text, embed_hybrid
+from tools.handlers import resolve_handler_for_row
 from tools.inspector import InspectionResult, inspect_component, inspection_to_payload_dict
 from tools.qdrant_wrapper import QdrantWrapper, point_id_for_catalogue_key
 from tools.settings import Settings
@@ -79,20 +80,41 @@ def resolve_catalogue_ids(
     raise click.ClickException("Specify one of --all, --category, or --id")
 
 
+def pick_sample_ids_per_category(catalogue: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """One deterministic catalogue id per normalized category (for dry-run matrix)."""
+    buckets: dict[str, list[str]] = {}
+    for cid, row in catalogue.items():
+        cat = str(row.get("category") or "").strip().lower()
+        if not cat:
+            continue
+        ncat = normalize_category(cat)
+        buckets.setdefault(ncat, []).append(cid)
+    return {k: sorted(v)[0] for k, v in sorted(buckets.items()) if v}
+
+
+# TODO: remove or make configurable post-launch — html_raw is for debugging preprocessor output only.
+_HTML_RAW_DEBUG_CAP = 10_000
+
+
 def _assemble_payload(
     *,
     catalogue_id: str,
     catalogue_row: dict[str, Any],
     html: str,
+    html_raw: str,
+    forge_handler: str,
     inspection: InspectionResult,
     embedding_text: str,
 ) -> dict[str, Any]:
     enrichment = inspection.model_dump()
     merged_index = inspection_to_payload_dict(inspection)
+    # TODO: remove or make configurable post-launch.
+    html_raw_capped = (html_raw or "")[:_HTML_RAW_DEBUG_CAP]
     return {
         "catalogue_id": catalogue_id,
         "point_id": point_id_for_catalogue_key(catalogue_id),
         **catalogue_row,
+        "forge_handler": forge_handler,
         "enrichment": enrichment,
         "emotional_trust": merged_index["emotional_trust"],
         "emotional_authority": merged_index["emotional_authority"],
@@ -104,6 +126,7 @@ def _assemble_payload(
         "layout_pattern": merged_index["layout_pattern"],
         "js_dependencies": merged_index["js_dependencies"],
         "html": html,
+        "html_raw": html_raw_capped,
         "html_preview": html[:500],
         "embedding_text": embedding_text,
         "usage_count": 0,
@@ -121,6 +144,8 @@ def run_ingest(
     dry_run: bool,
     force: bool,
     skip_enrichment: bool,
+    handler_cli: str | None = None,
+    wizard_handler_id: str | None = None,
 ) -> dict[str, int]:
     lib_root: Path = settings.component_library_root
     counts: dict[str, int] = {"ingested": 0, "skipped": 0, "failed": 0}
@@ -173,7 +198,20 @@ def run_ingest(
                         if not path.is_file():
                             raise FileNotFoundError(f"Missing HTML file: {path}")
 
-                        html = path.read_text(encoding="utf-8")
+                        html_raw = path.read_text(encoding="utf-8")
+                        eff_cli = handler_cli or wizard_handler_id
+                        handler, hid = resolve_handler_for_row(
+                            handler_cli=eff_cli,
+                            catalogue_row=row,
+                            default_handler_id=settings.forge_default_handler,
+                        )
+                        processed, prep_report = handler.preprocess(html_raw)
+                        n_art = len(prep_report.get("artifacts_removed", []))
+                        n_col = len(prep_report.get("colour_replacements", []))
+                        n_ph = len(prep_report.get("placeholders_added", []))
+                        step(
+                            f"preprocess ({hid}): artifacts={n_art}, colours={n_col}, placeholders={n_ph}"
+                        )
 
                         if skip_enrichment:
                             _set_step("enrich (skipped)…")
@@ -188,7 +226,7 @@ def run_ingest(
                                 api_key=settings.litellm_api_key,
                                 model=settings.litellm_inspector_model,
                                 catalogue=row,
-                                html=html,
+                                html=processed,
                                 max_retries=settings.ingest_max_retries,
                             )
                             embedding_text = build_embedding_text(
@@ -215,7 +253,9 @@ def run_ingest(
                             payload = _assemble_payload(
                                 catalogue_id=catalogue_id,
                                 catalogue_row=row,
-                                html=html,
+                                html=processed,
+                                html_raw=html_raw,
+                                forge_handler=hid,
                                 inspection=inspection,
                                 embedding_text=embedding_text,
                             )

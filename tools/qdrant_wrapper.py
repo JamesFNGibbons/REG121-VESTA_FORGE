@@ -20,6 +20,7 @@ POINT_NAMESPACE = uuid.UUID("018f3f24-7b3e-7f3a-8b0c-001122334455")
 
 KEYWORD_INDEX_FIELDS: tuple[str, ...] = (
     "category",
+    "forge_handler",
     "js_type",
     "js_complexity",
     "price_point_signal",
@@ -205,3 +206,25 @@ class QdrantWrapper:
             with_vectors=False,
         )
         return list(records)
+
+    def count_points_by_forge_handler(self) -> dict[str, int]:
+        """Aggregate ingested points by payload forge_handler (full scroll)."""
+        from collections import Counter
+
+        counts: Counter[str] = Counter()
+        offset = None
+        while True:
+            records, offset = self._client.scroll(
+                collection_name=self.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for r in records:
+                pl = r.payload or {}
+                h = str(pl.get("forge_handler") or "(none)")
+                counts[h] += 1
+            if offset is None:
+                break
+        return dict(counts)

@@ -1,13 +1,7 @@
-# Component library (HyperUI-style)
+# import_bin
 
-This directory holds **HTML placeholders** and a **Python catalogue** used by the REG121 component ingestion CLI.
+Component libraries live **per handler** under `import_bin/<handler_id>/` (e.g. `import_bin/hyperui/catalogue.py`).
 
-## Attribution
+Use `./121 library configure` or the **ingest interactive** wizard to pick a handler; the choice is saved under `.reg121/forge_handler` and drives which subdirectory is used when you are not using a custom `COMPONENT_LIBRARY_ROOT`.
 
-UI patterns and naming are inspired by **[HyperUI](https://www.hyperui.dev/)** (Tailwind CSS components, MIT licence). This repository is **not affiliated** with HyperUI.
-
-Until you replace the placeholder files with your own markup (and ensure you comply with upstream licences), treat these files as **non-production stubs** only.
-
-## Licence
-
-See [`LICENSE`](LICENSE) (MIT). When importing real HyperUI snippets, retain their licence notices as required by the MIT terms.
+Valid handler ids match `python -m tools.ingest_components handlers`: `hyperui`, `flowbite`, `preline`, `meraki`, `generic`.

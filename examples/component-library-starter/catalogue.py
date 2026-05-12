@@ -6,6 +6,7 @@ CATALOGUE: dict[str, dict] = {
     "heroes/split-left": {
         "name": "Authority Split Hero",
         "category": "hero",
+        "handler": "hyperui",
         "variant_name": "split-left",
         "file": "heroes/split-left.html",
         "source": "hyperui",

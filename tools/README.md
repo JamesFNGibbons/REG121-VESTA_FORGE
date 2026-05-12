@@ -18,6 +18,11 @@ python -m tools.ingest_components ingest --all --dry-run
 python -m tools.ingest_components ingest --all --force
 python -m tools.ingest_components ingest --all --skip-enrichment
 
+python -m tools.ingest_components ingest --all --handler hyperui
+python -m tools.ingest_components handlers
+python -m tools.ingest_components dry-run --handler hyperui
+python -m tools.ingest_components classify --inbox   # stub only
+
 python -m tools.ingest_components stats
 python -m tools.ingest_components search --query "law firm hero" --category hero
 python -m tools.ingest_components validate
@@ -38,9 +43,18 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 | `QDRANT_COLLECTION_NAME` | Default `reg121_design_brain` |
 | `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL` | LiteLLM for enrichment (Qwen) only |
 | `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `DEEPINFRA_EMBEDDING_MODEL`, `DENSE_VECTOR_SIZE` | [DeepInfra](https://deepinfra.com/docs/openai_api) OpenAI-compatible API for dense vectors; `DENSE_VECTOR_SIZE` must match the model (default **2560** for `Qwen/Qwen3-Embedding-4B`) |
+| `FORGE_DEFAULT_HANDLER` | Preprocessor when `--handler` and per-entry `handler` are unset. **Default is `hyperui`.** Set to `generic` for unknown libraries. |
 | `HOST_COMPONENT_LIBRARY` | Optional. Host path bind-mounted to `/library` (defaults to `./import_bin` in Compose) |
 
-HTML sent to the inspector is truncated to **4000 characters**.
+### Forge handlers (`tools/handlers/`)
+
+- **`ingest --handler <id>`** — `hyperui`, `flowbite`, `preline`, `meraki`, `generic`. Overrides catalogue `handler` and `FORGE_DEFAULT_HANDLER`.
+- **`handlers`** — Rich table of handlers, implementation row (**stub — uses generic preprocessor** for Flowbite/Preline/Meraki), and **ingested** counts from Qdrant payload `forge_handler`.
+- **`dry-run`** — Multi-step diagnostic (not the same as **`ingest --dry-run`**, which skips Qdrant writes only). Exercises preprocess matrix, one Qwen enrichment, embeddings, and Qdrant connectivity.
+- **Catalogue** — optional per-entry `"handler": "hyperui"` overrides CLI default for that component only.
+- **Payload** — `forge_handler` is stored on upsert. **`html_raw`** holds capped raw HTML (**10_000** chars) for debugging preprocessor output; **TODO: remove or make configurable post-launch.**
+
+HTML sent to the inspector is truncated to **4000 characters** (after preprocessing).
 
 ### `--skip-enrichment`
 
