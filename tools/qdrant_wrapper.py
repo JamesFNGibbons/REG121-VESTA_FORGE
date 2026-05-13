@@ -15,8 +15,8 @@ _console = Console(stderr=True)
 
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "sparse"
-# Default dense width for Qwen3-Embedding-4B (full MRL output); override with DENSE_VECTOR_SIZE / QdrantWrapper(dense_size=...).
-DENSE_SIZE = 2560
+# Default dense width for Qwen3-Embedding-8B via LiteLLM (full MRL output); override with DENSE_VECTOR_SIZE / QdrantWrapper(dense_size=...).
+DENSE_SIZE = 4096
 
 POINT_NAMESPACE = uuid.UUID("018f3f24-7b3e-7f3a-8b0c-001122334455")
 

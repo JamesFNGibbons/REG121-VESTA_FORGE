@@ -1,11 +1,11 @@
-"""Dense embeddings via DeepInfra (OpenAI-compatible) + sparse (FastEmbed SPLADE) locally."""
+"""Dense embeddings via LiteLLM (OpenAI-compatible /v1/embeddings) + sparse (FastEmbed SPLADE) locally."""
 
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
 
-from tools.openai_compat import openai_client_at_base_url
+from tools.litellm_client import openai_client_for_litellm
 
 if TYPE_CHECKING:
     from tools.settings import Settings
@@ -38,7 +38,7 @@ def embed_dense(
     expected_dim: int,
     text: str,
 ) -> list[float]:
-    client = openai_client_at_base_url(base_url, api_key)
+    client = openai_client_for_litellm(base_url, api_key)
     resp = client.embeddings.create(model=embedding_model, input=text)
     vec = resp.data[0].embedding
     if len(vec) != expected_dim:
@@ -65,9 +65,9 @@ def embed_sparse(text: str) -> tuple[list[int], list[float]]:
 
 def embed_hybrid(*, settings: "Settings", text: str) -> tuple[list[float], list[int], list[float]]:
     dense = embed_dense(
-        base_url=settings.deepinfra_base_url,
-        api_key=settings.deepinfra_api_key,
-        embedding_model=settings.deepinfra_embedding_model,
+        base_url=settings.litellm_base_url,
+        api_key=settings.litellm_api_key,
+        embedding_model=settings.litellm_embedding_model,
         expected_dim=settings.dense_vector_size,
         text=text,
     )

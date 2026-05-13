@@ -57,8 +57,8 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 |----------|---------|
 | `QDRANT_URL`, `QDRANT_API_KEY` | Qdrant Cloud |
 | `QDRANT_COLLECTION_NAME` | Default `reg121_design_brain` |
-| `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL` | LiteLLM for enrichment (Qwen) only. **`LITELLM_INSPECTOR_MODEL` must be an exact `id` from `GET …/v1/models`** for your key; `./121 validate` warns if it is missing from that list. |
-| `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `DEEPINFRA_EMBEDDING_MODEL`, `DENSE_VECTOR_SIZE` | [DeepInfra](https://deepinfra.com/docs/openai_api) OpenAI-compatible API for dense vectors; `DENSE_VECTOR_SIZE` must match the model (default **2560** for `Qwen/Qwen3-Embedding-4B`) |
+| `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LITELLM_INSPECTOR_MODEL`, `LITELLM_EMBEDDING_MODEL` | LiteLLM for **chat** (Qwen enrichment) and **dense embeddings** (`/v1/embeddings`). Both model ids must match exact `id` values from `GET …/v1/models` for your key; `./121 validate` checks them. |
+| `DENSE_VECTOR_SIZE` | Dense vector width; must match the embedding model (default **4096** for `qwen3-embedding-8b` full output). |
 | `FORGE_DEFAULT_HANDLER` | Preprocessor when `--handler` and per-entry `handler` are unset. **Default is `hyperui`.** Set to `generic` for unknown libraries. |
 | `HOST_COMPONENT_LIBRARY` | Optional. Host path bind-mounted to `/library` (defaults to `./import_bin` in Compose) |
 
@@ -72,13 +72,13 @@ See [`.env.example`](../.env.example) in the repo root. Key variables:
 
 HTML sent to the inspector is truncated to **4000 characters** (after preprocessing).
 
-Every ingest run calls **LiteLLM / Qwen** enrichment before embeddings (no opt-out).
+Every ingest run calls **LiteLLM** for Qwen enrichment and for dense embeddings (no separate embedding host).
 
 ## Qdrant collection
 
-Named vectors `dense` (default **2560** dims for `Qwen/Qwen3-Embedding-4B` on DeepInfra, cosine; set `DENSE_VECTOR_SIZE` to match the model you use) and `sparse` (SPLADE, `on_disk=false`). Payload indexes as implemented in `qdrant_wrapper.py`.
+Named vectors `dense` (default **4096** dims for `qwen3-embedding-8b` via LiteLLM, cosine; set `DENSE_VECTOR_SIZE` to match your gateway’s embedding output) and `sparse` (SPLADE, `on_disk=false`). Payload indexes as implemented in `qdrant_wrapper.py`.
 
-**Existing collections** created with 1536-dim OpenAI embeddings must use a new `QDRANT_COLLECTION_NAME` (or recreate the collection) when switching to Qwen3 dense vectors.
+**Existing collections** created with a different dense size (e.g. 2560) must use a new `QDRANT_COLLECTION_NAME` (or recreate the collection) when switching embedding models or `DENSE_VECTOR_SIZE`.
 
 ## HyperUI and licensing
 

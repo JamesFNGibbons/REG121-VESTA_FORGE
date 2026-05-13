@@ -241,7 +241,7 @@ def run_ingest(
                             enrichment=inspection.model_dump(),
                         )
 
-                        _set_step("embeddings (DeepInfra + SPLADE)…")
+                        _set_step("embeddings (LiteLLM + SPLADE)…")
                         step("generating embeddings…")
                         if dry_run:
                             _set_step("dry-run (no store)…")

@@ -63,10 +63,8 @@ def run_validate(*, console: "Console") -> None:
             issues.append("QDRANT_URL is not set")
         if not settings.qdrant_api_key:
             issues.append("QDRANT_API_KEY is not set")
-        if not settings.deepinfra_api_key:
-            issues.append("DEEPINFRA_API_KEY is not set (required for embeddings and search)")
         if not settings.litellm_api_key:
-            issues.append("LITELLM_API_KEY is not set (required for Qwen enrichment on ingest)")
+            issues.append("LITELLM_API_KEY is not set (required for Qwen enrichment and dense embeddings)")
         if settings.dense_vector_size < 1:
             issues.append("DENSE_VECTOR_SIZE must be >= 1")
 
@@ -86,7 +84,7 @@ def run_validate(*, console: "Console") -> None:
     q_key = os.getenv("QDRANT_API_KEY", "").strip() if settings is None else settings.qdrant_api_key
     q_coll = os.getenv("QDRANT_COLLECTION_NAME", "reg121_design_brain").strip() if settings is None else settings.qdrant_collection_name
     max_retries = int(os.getenv("INGEST_MAX_RETRIES", "3")) if settings is None else settings.ingest_max_retries
-    dense_sz = int(os.getenv("DENSE_VECTOR_SIZE", "2560")) if settings is None else settings.dense_vector_size
+    dense_sz = int(os.getenv("DENSE_VECTOR_SIZE", "4096")) if settings is None else settings.dense_vector_size
 
     if q_url and q_key:
         try:
@@ -194,26 +192,52 @@ def run_validate(*, console: "Console") -> None:
                 console.print(
                     f"[green]LiteLLM: {wanted!r} appears in /v1/models for this key.[/green]"
                 )
+            emb_wanted = (
+                settings.litellm_embedding_model.strip()
+                if settings is not None
+                else os.getenv("LITELLM_EMBEDDING_MODEL", "qwen3-embedding-8b").strip()
+            )
+            emb_dim = settings.dense_vector_size if settings is not None else int(os.getenv("DENSE_VECTOR_SIZE", "4096"))
+            if emb_wanted:
+                console.print(
+                    f"[dim]LiteLLM: configured embedding model LITELLM_EMBEDDING_MODEL={emb_wanted!r} "
+                    f"(DENSE_VECTOR_SIZE={emb_dim}).[/dim]"
+                )
+            if emb_wanted and id_set and emb_wanted not in id_set:
+                console.print(
+                    f"[red]LITELLM_EMBEDDING_MODEL is {emb_wanted!r} but that id is not listed "
+                    f"by /v1/models for this key — embeddings will fail until you fix it.[/red]"
+                )
+                emb_hints = [i for i in ids if "embed" in i.lower() or "qwen" in i.lower()]
+                if emb_hints:
+                    console.print(
+                        f"[yellow]Ids containing 'embed' or 'qwen' (hints): "
+                        f"{', '.join(sorted(set(emb_hints))[:20])}[/yellow]"
+                    )
+            elif emb_wanted and id_set and emb_wanted in id_set:
+                console.print(
+                    f"[green]LiteLLM: {emb_wanted!r} appears in /v1/models for this key.[/green]"
+                )
         except Exception as exc:
             console.print(f"[yellow]LiteLLM probe failed (non-fatal): {exc}[/yellow]")
             logger.info("LiteLLM probe failed", exc_info=True)
 
-    if settings is not None and settings.deepinfra_api_key:
+    if settings is not None and settings.litellm_api_key:
         try:
             from tools.embeddings import embed_dense
 
             _ = embed_dense(
-                base_url=settings.deepinfra_base_url,
-                api_key=settings.deepinfra_api_key,
-                embedding_model=settings.deepinfra_embedding_model,
+                base_url=settings.litellm_base_url,
+                api_key=settings.litellm_api_key,
+                embedding_model=settings.litellm_embedding_model,
                 expected_dim=settings.dense_vector_size,
                 text="validate",
             )
             console.print(
-                f"[green]DeepInfra: embedding probe OK ({settings.deepinfra_embedding_model}, dim={settings.dense_vector_size}).[/green]"
+                f"[green]LiteLLM: embedding probe OK ({settings.litellm_embedding_model}, dim={settings.dense_vector_size}).[/green]"
             )
         except Exception as exc:
-            console.print(f"[yellow]DeepInfra embedding probe failed (non-fatal): {exc}[/yellow]")
-            logger.info("DeepInfra embedding probe failed", exc_info=True)
+            console.print(f"[yellow]LiteLLM embedding probe failed (non-fatal): {exc}[/yellow]")
+            logger.info("LiteLLM embedding probe failed", exc_info=True)
 
     console.print("[bold]Validate finished.[/bold]")

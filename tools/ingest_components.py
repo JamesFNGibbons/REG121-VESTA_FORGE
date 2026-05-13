@@ -118,8 +118,8 @@ def ingest_cmd(
     if not settings.qdrant_url or not settings.qdrant_api_key:
         raise click.UsageError("QDRANT_URL and QDRANT_API_KEY are required for ingest.")
 
-    if not use_dry and not settings.deepinfra_api_key:
-        raise click.UsageError("DEEPINFRA_API_KEY is required for embeddings unless using --dry-run.")
+    if not use_dry and not settings.litellm_api_key:
+        raise click.UsageError("LITELLM_API_KEY is required for embeddings unless using --dry-run.")
 
     if not settings.litellm_api_key:
         raise click.UsageError("LITELLM_API_KEY is required for Qwen enrichment on every ingest.")
@@ -210,8 +210,8 @@ def dry_run_cmd(handler: str | None) -> None:
     catalogue = load_catalogue(settings.component_library_root)
     if not settings.litellm_api_key:
         raise click.UsageError("LITELLM_API_KEY required for enrichment step.")
-    if not settings.deepinfra_api_key:
-        raise click.UsageError("DEEPINFRA_API_KEY required for embedding step.")
+    if not settings.litellm_api_key:
+        raise click.UsageError("LITELLM_API_KEY required for embedding step.")
     if not settings.qdrant_url or not settings.qdrant_api_key:
         raise click.UsageError("QDRANT_URL and QDRANT_API_KEY required for Qdrant step.")
     code = run_forge_dry_run(console=console, settings=settings, catalogue=catalogue, handler_cli=handler)
@@ -281,8 +281,8 @@ def stats_cmd() -> None:
 def search_cmd(query: str, category: str | None, limit: int) -> None:
     _ensure_repo_on_path()
     settings = load_settings()
-    if not settings.deepinfra_api_key:
-        raise click.UsageError("DEEPINFRA_API_KEY is required for search.")
+    if not settings.litellm_api_key:
+        raise click.UsageError("LITELLM_API_KEY is required for search.")
     if not settings.qdrant_url or not settings.qdrant_api_key:
         raise click.UsageError("QDRANT_URL and QDRANT_API_KEY are required.")
 
