@@ -33,6 +33,8 @@ Ingest Tailwind-style UI components into **Qdrant Cloud** with hybrid embeddings
 
 `./121` uses Docker Compose (`docker-compose.yml` at the repo root). Each command runs `docker compose run --rm` unless noted.
 
+After **git pull** or changing ingestion code, rebuild the image so the container picks up `tools/`: **`./121 build`** (or `docker compose build app`). If you still see errors mentioning **DEEPINFRA**, the image was built from an older revision — rebuild, then retry.
+
 ## Layout
 
 | Path | Role |

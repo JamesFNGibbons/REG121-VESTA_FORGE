@@ -1,6 +1,6 @@
 # REG121 component ingestion CLI
 
-The supported workflow is **Docker + `./121`** (see [README.md](../README.md) in the repo root). Each `./121 …` invocation uses `docker compose run --rm`.
+The supported workflow is **Docker + `./121`** (see [README.md](../README.md) in the repo root). Each `./121 …` invocation uses `docker compose run --rm`. After updating this repo, run **`./121 build`** so the image includes the latest `tools/` (stale images can show old errors, e.g. references to removed env vars).
 
 Ingestion prints a **Rich progress bar** (spinner + bar + % + M of N + elapsed + ETA) and updates the **current step** (checking, HTML load, Qwen enrich, embeddings, Qdrant) while each component runs, so long LLM or embedding calls stay visible.
 
